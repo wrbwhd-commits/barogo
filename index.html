@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>바로고시스템 악취종합병원</title>
+<meta name="description" content="3분 문진으로 받는 악취 진료 차트. 태성환경연구소 악취종합병원 바로고시스템 (인턴 과제 프로토타입)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* 레이아웃: 병원 접수창구처럼 한 줄 동선(문진 → 차트 → 처방 영상 → 직원 접수). 종이 차트 느낌의 밝은 단일 테마. */
+:root{
+  color-scheme: light;
+  --paper:#f3f6f4; --surface:#ffffff; --ink:#11261f; --muted:#5a6d66; --line:#d3ddd8;
+  --accent:#0a7558; --accent-ink:#06432f; --accent-soft:#e1f1ea;
+  --crit:#bf3327; --crit-soft:#fbe9e6; --warn:#a96a12; --warn-soft:#fbf1dc; --ok:#2c7a4b; --ok-soft:#e4f3e9;
+  --dx:#0a7558; --build:#2a5db0; --mon:#8a4fb3; --ctrl:#b5521b; --rnd:#4b6470; --carbon:#5d7a1f; --intro:#7a6a55;
+  --font-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --r:10px; --gutter:clamp(16px,4vw,32px);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.6;-webkit-text-size-adjust:100%;word-break:keep-all;overflow-wrap:anywhere}
+h1,h2,h3{text-wrap:balance;line-height:1.3;margin:0}
+p{margin:0}
+a{color:var(--accent-ink)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 var(--gutter)}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* 상단 바 */
+.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:16px;min-height:60px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-weight:700;letter-spacing:-.01em}
+.brand svg{flex:none}
+.brand small{display:block;font-weight:500;font-size:11px;color:var(--muted);letter-spacing:0}
+.nav{margin-left:auto;display:flex;gap:4px}
+.nav a{padding:8px 12px;border-radius:8px;text-decoration:none;color:var(--muted);font-weight:500;font-size:15px}
+.nav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent-ink)}
+.nav a:hover{color:var(--ink)}
+/* 모바일 하단 탭 */
+.tabs{display:none}
+@media (max-width:720px){
+  .nav{display:none}
+  .tabs{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .tabs a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px 7px;text-decoration:none;color:var(--muted);font-size:12px;font-weight:500}
+  .tabs a[aria-current="page"]{color:var(--accent-ink);font-weight:700}
+  .tabs svg{width:22px;height:22px}
+  body{padding-bottom:64px}
+}
+
+.view{display:none;padding:28px 0 56px}
+.view.on{display:block}
+.eyebrow{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.02em}
+.lead{color:var(--muted);max-width:60ch}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 20px;border-radius:var(--r);border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:600;text-decoration:none;cursor:pointer}
+.btn:hover{background:var(--accent-ink)}
+.btn.ghost{background:var(--surface);color:var(--accent-ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--accent)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn.sm{min-height:36px;padding:0 12px;font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.note{font-size:13px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.crit{background:var(--crit-soft);color:var(--crit)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.demo{background:#eceff1;color:#4b5a60}
+.tag{display:inline-block;padding:1px 8px;border-radius:5px;font-size:12px;font-weight:600;color:#fff}
+.tag.f{background:#eef2f0;color:var(--muted);font-weight:500}
+
+/* 홈 */
+.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:28px;align-items:center}
+.hero h1{font-size:clamp(28px,5.2vw,44px);letter-spacing:-.02em;font-weight:700}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero .cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.ticket{padding:18px;border-left:5px solid var(--accent)}
+.ticket dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:10px 0 0;font-size:14px}
+.ticket dt{color:var(--muted)} .ticket dd{margin:0;font-weight:500}
+.ticket .rx{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);font-size:13px;color:var(--muted)}
+@media (max-width:820px){.hero{grid-template-columns:1fr}}
+.section{margin-top:44px}
+.section h2{font-size:22px;letter-spacing:-.01em}
+.section > .lead{margin-top:6px}
+.path{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:18px;counter-reset:st}
+.path a{position:relative;display:block;padding:14px 14px 16px;text-decoration:none;color:var(--ink);border-top:4px solid var(--c)}
+.path a::before{counter-increment:st;content:"0" counter(st);font-family:var(--font-mono);font-size:12px;color:var(--c)}
+.path b{display:block;font-size:17px;margin-top:2px}
+.path span{display:block;font-size:13px;color:var(--muted);margin-top:4px}
+.path i{display:block;font-style:normal;font-size:12px;font-weight:600;color:var(--c);margin-top:10px}
+@media (max-width:820px){.path{grid-template-columns:1fr 1fr}}
+@media (max-width:420px){.path{grid-template-columns:1fr}}
+.who{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+.who button{text-align:left;padding:14px;cursor:pointer}
+.who button:hover{border-color:var(--accent)}
+.who b{display:block} .who span{font-size:13px;color:var(--muted)}
+@media (max-width:820px){.who{grid-template-columns:1fr 1fr}}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.links a{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);text-decoration:none;font-size:14px;font-weight:500}
+.links a:hover{border-color:var(--accent)}
+
+/* 문진 */
+.q{padding:18px;margin-top:14px}
+.q legend{font-weight:700;font-size:17px;padding:0}
+.q fieldset{border:0;padding:0;margin:0;min-width:0}
+.q .hint{font-size:13px;color:var(--muted);margin-top:2px}
+.opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.opts label{position:relative;cursor:pointer}
+.opts input{position:absolute;opacity:0;inset:0;cursor:pointer}
+.opts span{display:block;padding:9px 14px;border:1px solid var(--line);border-radius:9px;background:var(--surface);font-size:15px;line-height:1.35}
+.opts span small{display:block;color:var(--muted);font-size:12px}
+.opts input:checked + span{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink);font-weight:600;box-shadow:inset 0 0 0 1px var(--accent)}
+.opts input:focus-visible + span{outline:3px solid var(--accent);outline-offset:2px}
+.qnum{font-family:var(--font-mono);color:var(--accent);margin-right:8px}
+.submitbar{position:sticky;bottom:72px;margin-top:18px;display:flex;align-items:center;gap:14px;padding:12px 14px;box-shadow:0 6px 24px rgba(17,38,31,.12)}
+.submitbar .prog{flex:1;font-size:14px;color:var(--muted)}
+.bar{height:6px;background:var(--line);border-radius:9px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+@media (min-width:721px){.submitbar{bottom:16px}}
+
+/* 차트 */
+.chart{padding:0;overflow:hidden}
+.chart-head{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end;justify-content:space-between;padding:18px 20px;border-bottom:2px solid var(--ink)}
+.chart-head h1{font-size:24px}
+.chart-head .meta{font-size:13px;color:var(--muted);text-align:right}
+.chart-body{display:grid;gap:0}
+.block{padding:18px 20px;border-bottom:1px solid var(--line)}
+.block h3{font-size:14px;color:var(--muted);font-weight:600;margin-bottom:10px}
+.sym{display:flex;flex-wrap:wrap;gap:8px}
+.sym span{padding:4px 10px;background:var(--paper);border-radius:6px;font-size:14px}
+.sym span b{color:var(--muted);font-weight:500;margin-right:6px}
+.triage{display:flex;gap:14px;align-items:center;padding:14px 16px;border-radius:var(--r);border-left:5px solid var(--lv)}
+.triage.crit{--lv:var(--crit);background:var(--crit-soft)} .triage.warn{--lv:var(--warn);background:var(--warn-soft)} .triage.ok{--lv:var(--ok);background:var(--ok-soft)}
+.triage b{font-size:18px;color:var(--lv);white-space:nowrap}
+.sub{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.sub > div{padding:12px 14px;border:1px solid var(--line);border-radius:var(--r)}
+.sub b{display:block}
+.sub .chem{font-size:13px;color:var(--accent-ink);margin:2px 0 6px}
+.sub p{font-size:14px;color:var(--muted)}
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.steps > div{padding:10px 12px;border-radius:var(--r);border:1px solid var(--line);background:var(--surface)}
+.steps > div.core{border-color:var(--accent);background:var(--accent-soft)}
+.steps > div.next{border-style:dashed;border-color:var(--accent)}
+.steps > div.opt{opacity:.6}
+.steps .lab{font-size:11px;font-weight:700;color:var(--accent-ink)}
+.steps > div.opt .lab{color:var(--muted)}
+.steps b{display:block;font-size:16px}
+.steps p{font-size:13px;color:var(--muted);margin-top:4px}
+@media (max-width:820px){.steps{grid-template-columns:1fr}}
+.rx-list{display:grid;gap:8px}
+.cases{display:grid;gap:6px;font-size:14px;margin:0;padding:0;list-style:none}
+.cases li{display:flex;gap:10px;align-items:baseline}
+.cases .y{flex:none;font-family:var(--font-mono);color:var(--muted);font-size:13px}
+.cases small{color:var(--muted)}
+.intake{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+.intake label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.intake input{min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);min-width:0;width:100%}
+@media (max-width:640px){.intake{grid-template-columns:1fr}}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.toast{margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--ok-soft);color:var(--ok);font-size:14px;font-weight:500}
+.disclaimer{padding:14px 20px;font-size:13px;color:var(--muted);background:var(--paper)}
+
+/* 영상 */
+.vrow{display:flex;gap:12px;align-items:stretch;padding:10px 12px;text-decoration:none;color:var(--ink);cursor:pointer;width:100%;text-align:left}
+.vrow:hover{border-color:var(--accent)}
+.thumb{flex:none;width:92px;border-radius:7px;background:var(--c);color:#fff;display:flex;flex-direction:column;justify-content:space-between;padding:7px 8px;min-height:58px;background-size:cover;background-position:center}
+.thumb{position:relative;overflow:hidden;width:128px;min-height:72px}
+.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.thumb em,.thumb .mono{position:relative}
+.thumb em{align-self:flex-start;background:var(--c);padding:1px 6px;border-radius:4px;font-style:normal;font-size:11px;font-weight:700;opacity:.95}
+.thumb .mono{font-size:12px;align-self:flex-end;background:rgba(0,0,0,.35);padding:0 5px;border-radius:4px}
+.vinfo{min-width:0;display:flex;flex-direction:column;gap:4px;justify-content:center}
+.vinfo b{font-weight:600;font-size:15px;line-height:1.35}
+.vmeta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.filters{display:grid;gap:10px;padding:14px;margin-top:16px}
+.search{display:flex;gap:8px}
+.search input{flex:1;min-width:0;min-height:46px;padding:0 14px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.chips button{flex:none;padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:var(--surface);font-size:14px;cursor:pointer;white-space:nowrap}
+.chips button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.chips button .n{opacity:.6;margin-left:4px;font-size:12px}
+.vhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin:16px 0 10px;font-size:14px;color:var(--muted)}
+.vhead select{min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 8px}
+.vgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+@media (max-width:820px){.vgrid{grid-template-columns:1fr}}
+@media (max-width:420px){.thumb{width:108px;min-height:62px}}
+.more{display:flex;justify-content:center;margin-top:16px}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+
+/* 직원 */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}
+.kpis div{padding:14px}
+.kpis b{display:block;font-size:26px;font-family:var(--font-mono)}
+.kpis span{font-size:13px;color:var(--muted)}
+@media (max-width:640px){.kpis{grid-template-columns:1fr 1fr}}
+.pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-top:10px;padding:14px}
+.pipe div{text-align:center;font-size:12px;color:var(--muted)}
+.pipe i{display:block;height:8px;border-radius:4px;background:var(--line);margin-bottom:6px;position:relative;overflow:hidden}
+.pipe i::after{content:"";position:absolute;inset:0;width:var(--w);background:var(--accent)}
+.pipe b{display:block;color:var(--ink);font-family:var(--font-mono);font-size:15px}
+.tablewrap{overflow-x:auto;margin-top:10px}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:600;background:var(--paper)}
+tr:last-child td{border-bottom:0}
+td select{min-height:34px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:0 6px}
+td .lnk{background:none;border:0;padding:0;color:var(--accent-ink);text-decoration:underline;cursor:pointer;font-family:var(--font-mono);font-size:13px}
+
+/* 상담 도우미 */
+.fab{position:fixed;right:16px;bottom:80px;z-index:30;display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;border-radius:99px;border:0;background:var(--ink);color:#fff;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(17,38,31,.3)}
+@media (min-width:721px){.fab{bottom:20px}}
+.chat{position:fixed;right:16px;bottom:80px;z-index:40;width:min(380px,calc(100vw - 32px));height:min(560px,calc(100% - 110px));display:none;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 48px rgba(17,38,31,.28);overflow:hidden}
+@media (min-width:721px){.chat{bottom:20px}}
+.chat.on{display:flex}
+.chat header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--ink);color:#fff}
+.chat header small{display:block;opacity:.7;font-size:11px;font-weight:400}
+.chat header button{background:none;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1;padding:4px 8px}
+.log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--paper)}
+.msg{max-width:88%;padding:9px 12px;border-radius:12px;font-size:14px;line-height:1.5;white-space:pre-line}
+.msg.bot{background:var(--surface);border:1px solid var(--line);align-self:flex-start}
+.msg.me{background:var(--accent);color:#fff;align-self:flex-end}
+.msg a{display:block;margin-top:6px;font-size:13px}
+.quick{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;border-top:1px solid var(--line)}
+.quick button{flex:none;padding:5px 10px;border-radius:99px;border:1px solid var(--line);background:var(--surface);font-size:13px;cursor:pointer}
+.chat form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.chat form input{flex:1;min-width:0;min-height:42px;border:1px solid var(--line);border-radius:9px;padding:0 12px}
+
+/* 영상 재생 창 */
+.modal{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;background:rgba(10,20,16,.7);padding:16px}
+.modal.on{display:flex}
+.modal .box{width:min(860px,100%);background:var(--surface);border-radius:14px;overflow:hidden}
+.modal .frame{aspect-ratio:16/9;background:#000}
+.modal iframe{width:100%;height:100%;border:0;display:block}
+.modal .foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px}
+
+footer{border-top:1px solid var(--line);padding:26px 0 34px;font-size:13px;color:var(--muted);background:var(--surface)}
+footer .wrap{display:grid;gap:14px}
+footer h2{font-size:16px;color:var(--ink)}
+footer h3{font-size:13px;color:var(--ink);margin-bottom:4px}
+.about{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:820px){.about{grid-template-columns:1fr}}
+.dtable{width:100%;min-width:0;font-size:13px}
+.dtable th,.dtable td{padding:7px 8px;vertical-align:top}
+.dtable td:first-child{font-weight:600;color:var(--ink);white-space:nowrap}
+.kind{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap}
+.kind.real{background:var(--ok-soft);color:var(--ok)} .kind.ai{background:var(--accent-soft);color:var(--accent-ink)} .kind.demo{background:var(--warn-soft);color:var(--warn)}
+.why{font-size:12px;color:var(--accent-ink)}
+.callbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:12px;padding:12px 14px;border-radius:var(--r);background:var(--paper);font-size:14px}
+.callbar b{font-family:var(--font-mono);font-size:16px}
+.ainote{white-space:pre-line;font-size:15px;margin-top:10px;padding:12px 14px;border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r) var(--r) 0}
+.ainote:empty{display:none}
+.fs{margin-left:8px;min-height:36px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.fs[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+@media (max-width:720px){.fs{margin-left:auto}}
+body.big main, body.big footer{zoom:1.15}
+.chat .call{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);font-size:13px;background:var(--surface)}
+.msg .vbtn{display:block;width:100%;text-align:left;margin-top:6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-size:13px;cursor:pointer}
+.msg .vbtn:hover{border-color:var(--accent)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media print{
+  .top,.tabs,.fab,.chat,footer,.noprint{display:none!important}
+  body{background:#fff;padding:0} .view{padding:0} .card{border-color:#999}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#home" aria-label="바로고시스템 홈">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="#0a7558"/><path d="M13 7h4v6h6v4h-6v6h-4v-6H7v-4h6z" fill="#fff"/></svg>
+      <span>바로고시스템<small>태성환경연구소 악취종합병원</small></span>
+    </a>
+    <nav class="nav" aria-label="주 메뉴">
+      <a href="#home" data-nav="home">홈</a>
+      <a href="#checkup" data-nav="checkup">문진·진료 차트</a>
+      <a href="#videos" data-nav="videos">영상 처방실</a>
+      <a href="#staff" data-nav="staff">직원 접수 현황</a>
+    </nav>
+    <button class="fs" id="fs" type="button" aria-pressed="false">글자 크게</button>
+  </div>
+</header>
+
+<main>
+<!-- ───────── 홈 ───────── -->
+<section class="view" id="v-home">
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">악취종합병원 통합 창구</p>
+        <h1>악취, <em>3분 문진</em>으로<br>바로 진단하고 바로 고칩니다</h1>
+        <p class="lead" style="margin-top:14px">다섯 가지 질문에 답하면 추정 원인, 필요한 진료 단계, 비슷한 실적, 꼭 볼 영상까지 한 장의 진료 차트로 정리해 드립니다. 접수된 차트는 담당 직원 화면으로 바로 넘어갑니다.</p>
+        <div class="cta">
+          <a class="btn" href="#checkup">문진 시작하기</a>
+          <a class="btn ghost" href="#videos"><span>영상 <span id="vcount"></span>편 둘러보기</span></a>
+        </div>
+      </div>
+      <aside class="card ticket" aria-label="진료 차트 예시">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <b>진료 차트 예시</b><span class="pill warn">주의</span>
+        </div>
+        <dl>
+          <dt>발생원</dt><dd>하수·폐수·슬러지 처리</dd>
+          <dt>증상</dt><dd>썩은 달걀 냄새, 야간·새벽에 심함</dd>
+          <dt>추정 원인</dt><dd>황화수소 등 황화합물</dd>
+          <dt>권장 경로</dt><dd>진단 → 설계 → 시공</dd>
+        </dl>
+        <p class="rx">처방 영상 5편과 유사 실적이 함께 발급됩니다.</p>
+      </aside>
+    </div>
+
+    <div class="section">
+      <h2>어떤 입장에서 오셨나요?</h2>
+      <p class="lead">선택하면 문진의 첫 질문이 미리 채워집니다.</p>
+      <div class="who" id="who-quick"></div>
+    </div>
+
+    <div class="section">
+      <h2>진료과 안내: 진단부터 관제까지</h2>
+      <p class="lead">악취종합병원은 원인 규명에서 사후 관제까지 한 곳에서 이어집니다. 단계를 누르면 해당 영상으로 이동합니다.</p>
+      <div class="path" id="path"></div>
+    </div>
+
+    <div class="section">
+      <h2>많이 본 영상</h2>
+      <p class="lead">채널 조회수 상위 영상입니다.</p>
+      <div class="vgrid" id="top-videos" style="margin-top:16px"></div>
+    </div>
+
+    <div class="section">
+      <h2>회사 홈페이지 바로가기</h2>
+      <p class="lead">기존 홈페이지의 주요 메뉴를 이곳에서 바로 엽니다.</p>
+      <div class="links">
+        <a href="http://www.ts-ei.com/" target="_blank" rel="noopener">홈페이지 메인</a>
+        <a href="http://www.ts-ei.com/outline" target="_blank" rel="noopener">회사 개요</a>
+        <a href="http://www.ts-ei.com/consulting" target="_blank" rel="noopener">엔지니어링 실적</a>
+        <a href="http://www.ts-ei.com/management" target="_blank" rel="noopener">악취통합관리시스템</a>
+        <a href="http://www.ts-ei.com/research/" target="_blank" rel="noopener">기업부설연구소</a>
+        <a href="http://www.ts-ei.com/video" target="_blank" rel="noopener">홈페이지 동영상</a>
+        <a href="https://www.youtube.com/@태성환경연구소" target="_blank" rel="noopener">유튜브 채널</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 문진 ───────── -->
+<section class="view" id="v-checkup">
+  <div class="wrap" style="max-width:820px">
+    <p class="eyebrow">접수 · 문진</p>
+    <h1 style="font-size:28px">다섯 가지만 알려주세요</h1>
+    <p class="lead" style="margin-top:6px">정확히 몰라도 괜찮습니다. 가장 가까운 것을 고르면 됩니다.</p>
+    <form id="form" novalidate></form>
+    <div class="card submitbar">
+      <div class="prog"><span id="prog-text">5개 중 0개 선택</span><div class="bar"><i id="prog-bar"></i></div></div>
+      <button class="btn" id="go" type="button" disabled>진료 차트 받기</button>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 차트 ───────── -->
+<section class="view" id="v-chart">
+  <div class="wrap" style="max-width:900px" id="chart-root"></div>
+</section>
+
+<!-- ───────── 영상 ───────── -->
+<section class="view" id="v-videos">
+  <div class="wrap">
+    <p class="eyebrow">영상 처방실</p>
+    <h1 style="font-size:28px">필요한 영상만 골라 보세요</h1>
+    <p class="lead" style="margin-top:6px">유튜브 채널의 영상 <span id="vcount2"></span>편을 AI가 진료 단계와 분야별로 분류했습니다.</p>
+    <div class="card filters">
+      <div class="search">
+        <input id="q" type="search" placeholder="예: 축사, 스크러버, 드론, 암모니아" aria-label="영상 검색">
+      </div>
+      <div class="chips" id="stage-chips" role="group" aria-label="진료 단계"></div>
+      <div class="chips" id="field-chips" role="group" aria-label="분야"></div>
+    </div>
+    <div class="vhead">
+      <span id="vresult"></span>
+      <label>정렬 <select id="sort"><option value="new">최신순</option><option value="views">조회수순</option></select></label>
+    </div>
+    <div class="vgrid" id="vlist"></div>
+    <div class="more"><button class="btn ghost" id="more" type="button">더 보기</button></div>
+  </div>
+</section>
+
+<!-- ───────── 직원 ───────── -->
+<section class="view" id="v-staff">
+  <div class="wrap">
+    <p class="eyebrow">내부 직원용</p>
+    <h1 style="font-size:28px">접수 현황</h1>
+    <p class="lead" style="margin-top:6px">고객이 접수한 진료 차트가 이곳에 쌓입니다. 단계를 바꾸면 진행 상황이 갱신됩니다. <span class="pill demo">예시 데이터 포함</span></p>
+    <div class="kpis" id="kpis"></div>
+    <div class="card pipe" id="pipe"></div>
+    <div class="vhead">
+      <span id="sresult"></span>
+      <div class="chips" id="lv-chips" role="group" aria-label="긴급도"></div>
+    </div>
+    <div class="card tablewrap"><table id="stable"></table></div>
+    <p class="note" style="margin-top:10px">프로토타입이라 접수 내용은 이 브라우저에만 저장됩니다. 실제 운영 시에는 로그인과 서버 저장이 필요합니다.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <h2>이 사이트에 대하여</h2>
+    <div class="about">
+      <div>
+        <h3>무엇을 하는 곳인가요</h3>
+        <p>바로고시스템은 태성환경연구소 악취종합병원의 통합 창구를 가정해 만든 프로토타입입니다. 고객은 문진으로 진료 차트를 받고, 영상과 AI 상담으로 궁금한 점을 먼저 해결한 뒤, 상담 접수나 전화로 이어집니다. 직원은 접수된 차트를 진단부터 관제까지 단계별로 관리합니다.</p>
+        <h3 style="margin-top:12px">누가 만들었나요</h3>
+        <p>2027 상반기 울산대학교 장기현장실습 사전 AI 과제로 인턴 지원자가 Claude(Anthropic)와 함께 기획·제작했습니다. 태성환경연구소의 공식 서비스가 아닙니다.</p>
+        <h3 style="margin-top:12px">문의</h3>
+        <p>고객센터 <b style="color:var(--ink)">052-0000-0000</b> <span class="kind demo">예시 번호</span> · <a href="http://www.ts-ei.com/" target="_blank" rel="noopener">www.ts-ei.com</a></p>
+      </div>
+      <div>
+        <h3>사용한 데이터</h3>
+        <table class="dtable">
+          <tr><td>영상 목록</td><td><span class="kind real">실제</span></td><td>공식 유튜브 채널의 영상 <span id="vcount3"></span>편 (2026.11.11 기준 제목·길이·조회수)</td></tr>
+          <tr><td>영상 분류</td><td><span class="kind ai">AI 생성</span></td><td>AI가 제목을 읽고 단계·분야를 태깅했습니다. 일부 오분류가 있을 수 있습니다.</td></tr>
+          <tr><td>실적</td><td><span class="kind real">실제</span></td><td>회사 홈페이지 엔지니어링 실적 페이지에 게시된 내용 중 일부</td></tr>
+          <tr><td>원인 추정</td><td><span class="kind ai">AI 생성</span></td><td>악취방지법 지정악취물질에 관한 일반 지식으로 구성했으며 회사의 검수를 거치지 않았습니다.</td></tr>
+          <tr><td>접수 예시 5건</td><td><span class="kind demo">데모</span></td><td>직원 접수 현황의 "(예시)" 고객은 화면 설명용 가상 데이터입니다.</td></tr>
+          <tr><td>상담 접수</td><td><span class="kind demo">데모</span></td><td>입력 내용은 회사로 전송되지 않고 사용 중인 브라우저에만 저장됩니다.</td></tr>
+          <tr><td>전화번호</td><td><span class="kind demo">데모</span></td><td>052-0000-0000은 예시 번호입니다. 인턴 선발 과제용 사이트라 실제 고객 전화가 회사로 잘못 연결되지 않도록 대표번호를 넣지 않았습니다. 실제 운영 시 고객센터 번호로 바꾸면 됩니다.</td></tr>
+          <tr><td>AI 상담</td><td><span class="kind ai">AI 생성</span></td><td>Claude가 이 사이트의 정보를 바탕으로 답합니다. AI를 쓸 수 없는 환경에서는 미리 준비한 기본 안내로 바뀝니다.</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<nav class="tabs" aria-label="하단 메뉴">
+  <a href="#home" data-nav="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>홈</a>
+  <a href="#checkup" data-nav="checkup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M12 8v6M9 11h6M9 17h6"/></svg>문진</a>
+  <a href="#videos" data-nav="videos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>영상</a>
+  <a href="#staff" data-nav="staff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M21 19H3"/></svg>접수 현황</a>
+</nav>
+
+<button class="fab" id="fab" type="button" aria-controls="chat" aria-expanded="false">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>AI 상담
+</button>
+<div class="chat" id="chat" role="dialog" aria-label="AI 상담 도우미">
+  <header><div><b>AI 상담 도우미</b><small id="chat-mode">연결 확인 중</small></div><button type="button" id="chat-x" aria-label="닫기">×</button></header>
+  <div class="log" id="log" aria-live="polite"></div>
+  <div class="quick" id="quick"></div>
+  <div class="call"><span>해결되지 않으면 전화로 연결하세요</span><span><b class="mono">052-0000-0000</b> <span class="kind demo">예시 번호</span></span></div>
+  <form id="chat-form"><input id="chat-in" type="text" placeholder="궁금한 점을 입력하세요" aria-label="질문 입력" autocomplete="off"><button class="btn sm" type="submit">보내기</button></form>
+</div>
+
+<div class="modal" id="modal" role="dialog" aria-label="영상 재생">
+  <div class="box">
+    <div class="frame" id="frame"></div>
+    <div class="foot"><b id="m-title"></b><div class="actions"><a class="btn sm ghost" id="m-link" target="_blank" rel="noopener">YouTube에서 열기</a><button class="btn sm" id="m-x" type="button">닫기</button></div></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ========== 데이터 ========== */
+const VIDEOS = [{"n":0,"d":"2:05","t":"태성환경연구소 _악취민원관리방안","v":26,"a":"6일 전","s":"ctrl","f":["city"],"l":"ko","c":"악취민원관리방안","id":"4XyuvEA8C1k"},{"n":1,"d":"2:13","t":"태성환경연구소  -여천매립지 악취방지 대책-","v":114,"a":"2주 전","s":"build","f":["waste"],"l":"ko","c":"여천매립지 악취방지 대책","id":"PO7REfpXxOM"},{"n":2,"d":"5:31","t":"태성환경연구소 -악취_진단해결예측관리_통합솔루션- 설계, 시공, AI-AX, net마이크로 버블, 악취 모니터링","v":131,"a":"2주 전","s":"intro","f":[],"l":"ko","c":"악취_진단해결예측관리_통합솔루션- 설계, 시공, AI-AX, net마이크로 버블, 악취 모니터링","id":"T_mptCb0Qq8"},{"n":3,"d":"8:26","t":"Taesung Environmental Research Institute - 울산 세계 미래산업 박람회","v":264,"a":"1개월 전","s":"intro","f":[],"l":"en","c":"울산 세계 미래산업 박람회","id":"vq2-MdIsaiE"},{"n":4,"d":"1:17","t":"태성환경연구소  - 후각센서를 이용한 아기 돌봄로봇 -","v":108,"a":"2개월 전","s":"rnd","f":["life"],"l":"ko","c":"후각센서를 이용한 아기 돌봄로봇","id":"Gjj9nQOJdvY"},{"n":5,"d":"0:08","t":"태성환경연구소","v":37,"a":"4개월 전","s":"intro","f":[],"l":"ko","c":"태성환경연구소 (짧은 소개 영상)","id":"gcfAY0_omgM"},{"n":6,"d":"0:09","t":"태성환경연구소","v":14,"a":"4개월 전","s":"intro","f":[],"l":"ko","c":"태성환경연구소 (짧은 소개 영상)","id":"QyiR2jkMtzo"},{"n":7,"d":"0:09","t":"태성환경연구소","v":20,"a":"4개월 전","s":"intro","f":[],"l":"ko","c":"태성환경연구소 (짧은 소개 영상)","id":"dT9wW88T-yw"},{"n":8,"d":"3:23","t":"태성환경연구소  -Sensors - Humanoids - Drug detection - Automotive - E-Nose","v":64,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"Sensors - Humanoids - Drug detection - Automotive - E-Nose","id":"O8_bb2Lzzck"},{"n":9,"d":"1:31","t":"태성환경연구소   \"대량 생산기반 NC 센서 제조 공정_ai제작활용\"","v":38,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"대량 생산기반 NC 센서 제조 공정_ai제작활용","id":"ycxA8IIqdLc"},{"n":10,"d":"1:51","t":"\"태성환경연구소  \"챔버오븐휴대용복합악취측정기\"","v":24,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"챔버오븐휴대용복합악취측정기","id":"oUzzapP-SCw"},{"n":11,"d":"1:52","t":"태성환경연구소   \"벤치시스템\"","v":26,"a":"5개월 전","s":"dx","f":[],"l":"ko","c":"벤치시스템","id":"Qej3t5oZwqY"},{"n":12,"d":"2:19","t":"태성환경연구소  \"반도체 웨이퍼 클리너 _냄새평가시스템\"","v":9,"a":"5개월 전","s":"rnd","f":["plant"],"l":"ko","c":"반도체 웨이퍼 클리너 _냄새평가시스템","id":"3_gswllJcLo"},{"n":13,"d":"1:26","t":"태성환경연구소   -티엠에스(tms)실 공기정화장치-","v":23,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"티엠에스(tms)실 공기정화장치","id":"dQMXixTFtjE"},{"n":14,"d":"5:21","t":"태성환경연구소  \"센서_악취모니터링_스마트그리드_배출구_TMS\"","v":29,"a":"5개월 전","s":"mon","f":["plant"],"l":"ko","c":"센서_악취모니터링_스마트그리드_배출구_TMS","id":"xHKpUokl4QM"},{"n":15,"d":"0:56","t":"태성환경연구소  \"스마트폰내 NC센서적용\"","v":8,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"스마트폰내 NC센서적용","id":"I1JrDBRaxW4"},{"n":16,"d":"2:08","t":"태성환경연구소   \"웨이퍼클리너_평가실험영상_A\"","v":6,"a":"5개월 전","s":"rnd","f":["plant"],"l":"ko","c":"웨이퍼클리너_평가실험영상_A","id":"c3WxHgZgmwE"},{"n":17,"d":"2:26","t":"태성환경연구소 \"NC센서_모니터링_모델링\"","v":9,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"NC센서_모니터링_모델링","id":"WRJ0fS0BRtY"},{"n":18,"d":"0:48","t":"[전자코] 초소형으로 마약까지 완벽 탐지! 패턴 방식으로 더 정확해진 휴대용 전자코 기술","v":52,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"[전자코] 초소형으로 마약까지 완벽 탐지! 패턴 방식으로 더 정확해진 휴대용 전자코 기술","id":"uJiKQivt_q4"},{"n":19,"d":"3:16","t":"태성환경연구소 -센서_휴머노이드_마약탐지 전자코_자동차-","v":160,"a":"5개월 전","s":"rnd","f":["car"],"l":"ko","c":"센서_휴머노이드_마약탐지 전자코_자동차","id":"wXGQRT6jqgA"},{"n":20,"d":"2:26","t":"NC Sensors - Humanoids - Automotive","v":19,"a":"5개월 전","s":"rnd","f":[],"l":"en","c":"NC Sensors - Humanoids - Automotive","id":"fO6lD_4RT44"},{"n":21,"d":"1:04","t":"태성환경연구소 - 고분자 로봇과 드론을 활용-","v":5,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"고분자 로봇과 드론을 활용","id":"RtkMfyWoxk8"},{"n":22,"d":"1:21","t":"태성환경연구소  -사람 고분자 휴대폰용 센서 적용 영상-","v":14,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"사람 고분자 휴대폰용 센서 적용 영상","id":"HoXwIdS582w"},{"n":23,"d":"1:27","t":"태성환경연구소  -사람 고분자 패치형 센서 적용 영상-","v":7,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"사람 고분자 패치형 센서 적용 영상","id":"jCt4pxFEdgE"},{"n":24,"d":"2:11","t":"태성환경연구소  -자동차 고분자 센서 적용 영상-","v":46,"a":"5개월 전","s":"rnd","f":["car"],"l":"ko","c":"자동차 고분자 센서 적용 영상","id":"E-xd-BPig9Q"},{"n":25,"d":"2:12","t":"태성환경연구소 -가축 폐사 방지 및 축사 악취저감 기술-","v":15,"a":"5개월 전","s":"build","f":["farm"],"l":"ko","c":"가축 폐사 방지 및 축사 악취저감 기술","id":"p0hI5hrVFS8"},{"n":26,"d":"2:16","t":"태성환경연구소 -자동차_HVAC 부품별 분석 결과-","v":5,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"자동차_HVAC 부품별 분석 결과","id":"HO65vWhhJeA"},{"n":27,"d":"3:40","t":"태성환경연구소 -자동차 모듈부품의 voc분석영상 (MS300-57)-","v":17,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"자동차 모듈부품의 voc분석영상 (MS300-57)","id":"yG5lFL84Nc0"},{"n":28,"d":"1:11","t":"태성환경연구소  -휴대용센서_안전모장착용-","v":2,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"휴대용센서_안전모장착용","id":"d7kgMcTjtlc"},{"n":29,"d":"1:03","t":"태성환경연구소 -자동차_에어컨 냄새 개선 방안-","v":7,"a":"5개월 전","s":"build","f":["car"],"l":"ko","c":"자동차_에어컨 냄새 개선 방안","id":"2B5I5bUCYNw"},{"n":30,"d":"1:35","t":"태성환경연구소 -자동차_에어필터 제품적용영상-","v":5,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"자동차_에어필터 제품적용영상","id":"hW1XD9D8-S4"},{"n":31,"d":"1:43","t":"태성환경연구소 -자동차-Seat 분석방법-V1-","v":3,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"자동차-Seat 분석방법-V1","id":"-zsF-pjXgxQ"},{"n":32,"d":"1:33","t":"태성환경연구소  -중고차 에어컨 냄새평가 방법-","v":23,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"중고차 에어컨 냄새평가 방법","id":"UtN_tt-O5Zo"},{"n":33,"d":"0:36","t":"태성환경연구소 -자동차_자동차내장제-","v":6,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"자동차_자동차내장제","id":"dQb3SPiqnyU"},{"n":34,"d":"6:24","t":"태성환경연구소 -완성차악취토탈솔루션-","v":8,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"완성차악취토탈솔루션","id":"5HBJDMBlC38"},{"n":35,"d":"1:34","t":"태성환경연구소  -휴대용_센서박스_3d영상_프로그램화면_탈착식주입-","v":2,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"휴대용_센서박스_3d영상_프로그램화면_탈착식주입","id":"eMARoPr98Tk"},{"n":36,"d":"3:56","t":"태성환경연구소  -울산시_악취예보모니터링시스템-","v":6,"a":"5개월 전","s":"ctrl","f":["city"],"l":"ko","c":"울산시_악취예보모니터링시스템","id":"D8vVAwiN2lQ"},{"n":37,"d":"1:11","t":"태성환경연구소 -휴대용_센서박스_3d영상-","v":5,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"휴대용_센서박스_3d영상","id":"GqSRUi877Kc"},{"n":38,"d":"4:42","t":"태성환경연구소 -최소감지값을 이용한 냄새유발 원인성분 규명 기법-","v":12,"a":"5개월 전","s":"dx","f":[],"l":"ko","c":"최소감지값을 이용한 냄새유발 원인성분 규명 기법","id":"sOIiDOEgNRg"},{"n":39,"d":"0:44","t":"태성환경연구소  -센서박스_MFC_sparger-","v":1,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"센서박스_MFC_sparger","id":"y5XrGX0TEu4"},{"n":40,"d":"0:46","t":"태성환경연구소  -휴대용_나노복합체_센서어레이-","v":5,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"휴대용_나노복합체_센서어레이","id":"4cfT7dSnmfM"},{"n":41,"d":"0:40","t":"태성환경연구소  -HF감지기_ts_비교-","v":0,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"HF감지기_ts_비교","id":"SxPO3thBuTU"},{"n":42,"d":"1:26","t":"태성환경연구소   -필름 센서박스-","v":3,"a":"5개월 전","s":"rnd","f":[],"l":"ko","c":"필름 센서박스","id":"cNAT7j23VD0"},{"n":43,"d":"1:10","t":"태성환경연구소  -소다 플랜트 구조영상-","v":19,"a":"5개월 전","s":"carbon","f":["plant"],"l":"ko","c":"소다 플랜트 구조영상","id":"FyoCV4O3_Lo"},{"n":44,"d":"5:17","t":"태성환경연구소  -사업장악취운영관리_최소감지값-","v":4,"a":"5개월 전","s":"ctrl","f":["plant"],"l":"ko","c":"사업장악취운영관리_최소감지값","id":"hHA3UsLuMQ8"},{"n":45,"d":"4:41","t":"태성환경연구소   -고화처리사업소-","v":8,"a":"5개월 전","s":"build","f":["sewage"],"l":"ko","c":"고화처리사업소","id":"GIPGtTeb7kI"},{"n":46,"d":"0:46","t":"태성환경연구소  -광주 하수슬러지 처리시설 -1, 2차 약액세정탑 개조-","v":15,"a":"5개월 전","s":"build","f":["sewage"],"l":"ko","c":"광주 하수슬러지 처리시설 -1, 2차 약액세정탑 개조","id":"c6o8QqfS-H0"},{"n":47,"d":"0:23","t":"태성환경연구소  -00광주 하수슬러지 처리시설 -3차 미생물 세정탑 개조-","v":14,"a":"5개월 전","s":"build","f":["sewage"],"l":"ko","c":"광주 하수슬러지 처리시설 -3차 미생물 세정탑 개조","id":"eXGgl7tjdIs"},{"n":48,"d":"2:31","t":"태성환경연구소  01 -광주 하수슬러지 처리시설 -바이오필터 개조-","v":40,"a":"5개월 전","s":"build","f":["sewage"],"l":"ko","c":"광주 하수슬러지 처리시설 -바이오필터 개조","id":"kY6nnT9tvSE"},{"n":49,"d":"0:58","t":"태성환경연구소  -광주 하수슬러지 처리시설 -방지시설 배관 변경 및개조-","v":14,"a":"5개월 전","s":"build","f":["sewage"],"l":"ko","c":"광주 하수슬러지 처리시설 -방지시설 배관 변경 및개조","id":"iRVCzCql3Gk"},{"n":50,"d":"2:34","t":"태성환경연구소 -당진화력발전소 저탄장-","v":37,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"당진화력발전소 저탄장","id":"9DUL5SWv1qs"},{"n":51,"d":"1:14","t":"태성환경연구소  -한국국토정보공사 드론시연-","v":12,"a":"5개월 전","s":"mon","f":["city"],"l":"ko","c":"한국국토정보공사 드론시연","id":"Gm2V0n0QBwE"},{"n":52,"d":"1:57","t":"태성환경연구소  -태성드론 소개-","v":102,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"태성드론 소개","id":"XCvC0ckXjl0"},{"n":53,"d":"4:21","t":"태성환경연구소  -oms 장비-","v":9,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"oms 장비","id":"lm-GwupwOkU"},{"n":54,"d":"1:53","t":"태성환경연구소  -악취센서 평가 테스트-","v":4,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"악취센서 평가 테스트","id":"MclXS4PciZ0"},{"n":55,"d":"3:02","t":"태성환경연구소  -악취추적모니터링시스템-","v":7,"a":"5개월 전","s":"ctrl","f":[],"l":"ko","c":"악취추적모니터링시스템","id":"HrrgkBeTAvI"},{"n":56,"d":"2:29","t":"태성환경연구소  -광저우 LGD 악취통합 관제시스템-","v":15,"a":"5개월 전","s":"ctrl","f":["plant"],"l":"ko","c":"광저우 LGD 악취통합 관제시스템","id":"gRnsDNzwbzE"},{"n":57,"d":"1:44","t":"태성환경연구소  -무인자동포집시스템-","v":7,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"무인자동포집시스템","id":"P5P3V3CEcns"},{"n":58,"d":"2:52","t":"태성환경연구소  -제안영상_악취통합 관제시스템-","v":7,"a":"5개월 전","s":"ctrl","f":[],"l":"ko","c":"제안영상_악취통합 관제시스템","id":"4rujQ6GP2D4"},{"n":59,"d":"2:12","t":"태성환경연구소  -가축 폐사 방지 및 축사 악취저감 기술(소취매쉬 특허)-","v":5,"a":"5개월 전","s":"build","f":["farm"],"l":"ko","c":"가축 폐사 방지 및 축사 악취저감 기술(소취매쉬 특허)","id":"hfw-NnvfUns"},{"n":60,"d":"2:27","t":"태성환경연구소 -울주군 울주영농조합-","v":6,"a":"5개월 전","s":"build","f":["farm"],"l":"ko","c":"울주군 울주영농조합","id":"tr7zhQQC7ig"},{"n":61,"d":"1:59","t":"태성환경연구소 -울주군 경순농장 악취저감방안-","v":16,"a":"5개월 전","s":"build","f":["farm"],"l":"ko","c":"울주군 경순농장 악취저감방안","id":"uRW5aI507ZU"},{"n":62,"d":"1:27","t":"태성환경연구소 -울주군 박OO농장 악취저감 방안-","v":5,"a":"5개월 전","s":"build","f":["farm"],"l":"ko","c":"울주군 박OO농장 악취저감 방안","id":"2ZnMNqosGZo"},{"n":63,"d":"2:00","t":"태성환경연구소 -2017 대기·악취배출업체 전수조사 용역업체명 공개(고용량)-","v":8,"a":"5개월 전","s":"ctrl","f":["city"],"l":"ko","c":"2017 대기·악취배출업체 전수조사 용역업체명 공개(고용량)","id":"w_gH9QM0fyU"},{"n":64,"d":"1:43","t":"태성환경연구소 -건자재 유해물질 평가-","v":3,"a":"5개월 전","s":"dx","f":["build"],"l":"ko","c":"건자재 유해물질 평가","id":"LBH_pmqBLcE"},{"n":65,"d":"1:43","t":"태성환경연구소 -자동차시트분석영상-","v":9,"a":"5개월 전","s":"dx","f":["car"],"l":"ko","c":"자동차시트분석영상","id":"GXw6tCMYUF8"},{"n":66,"d":"3:11","t":"태성환경연구소 -복합악취분석-","v":19,"a":"5개월 전","s":"dx","f":[],"l":"ko","c":"복합악취분석","id":"q4k8XWMl6tg"},{"n":67,"d":"2:15","t":"태성환경연구소 -슬러지_LC분석-","v":4,"a":"5개월 전","s":"dx","f":["sewage"],"l":"ko","c":"슬러지_LC분석","id":"w8vlBJVGqhE"},{"n":68,"d":"2:48","t":"태성환경연구소 -소형챔버-","v":9,"a":"5개월 전","s":"dx","f":[],"l":"ko","c":"소형챔버","id":"g8xZfY1tY1c"},{"n":69,"d":"2:35","t":"태성환경연구소 -소취성 조성물 및 이의 제조방법_수정-","v":7,"a":"5개월 전","s":"build","f":[],"l":"ko","c":"소취성 조성물 및 이의 제조방법_수정","id":"fAMNnssRDEk"},{"n":70,"d":"0:24","t":"태성환경연구소 -당진저탄장-","v":5,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"당진저탄장","id":"Si5NqtwfWJU"},{"n":71,"d":"7:31","t":"태성환경연구소 -악취문제해결방안-","v":10,"a":"5개월 전","s":"build","f":[],"l":"ko","c":"악취문제해결방안","id":"Ra6sWXzplSY"},{"n":72,"d":"1:44","t":"태성환경연구소 -전주자원화-","v":14,"a":"5개월 전","s":"build","f":["waste"],"l":"ko","c":"전주자원화","id":"REAiu6n1lk4"},{"n":73,"d":"0:55","t":"태성환경연구소 -오존발생기-","v":63,"a":"5개월 전","s":"build","f":[],"l":"ko","c":"오존발생기","id":"Hr7uss8s-xI"},{"n":74,"d":"3:14","t":"태성환경연구소  -시프트매스_네비게이션연동-","v":3,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"시프트매스_네비게이션연동","id":"Ka9QnORmzKI"},{"n":75,"d":"3:07","t":"태성환경연구소 -휴대용odna_펠티어-","v":3,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"휴대용odna_펠티어","id":"e0ZMaFE9zfA"},{"n":76,"d":"2:25","t":"태성환경연구소  -한화토탈-","v":6,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"한화토탈","id":"bk_-v4gNiGA"},{"n":77,"d":"3:40","t":"태성환경연구소 -재경농장-","v":11,"a":"5개월 전","s":"build","f":["farm"],"l":"ko","c":"재경농장","id":"lxF12eCLliE"},{"n":78,"d":"0:32","t":"태성환경연구소 -OMS 이동식 악취 차량 10초-","v":25,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"OMS 이동식 악취 차량 10초","id":"V-tyn77Cayw"},{"n":79,"d":"0:22","t":"태성환경연구소  -탄소중립_석유화학단지 10초-","v":8,"a":"5개월 전","s":"carbon","f":["plant"],"l":"ko","c":"탄소중립_석유화학단지 10초","id":"6nkdnEdYNaQ"},{"n":80,"d":"0:17","t":"태성환경연구소 -열분해_로터리_킬런_10","v":6,"a":"5개월 전","s":"carbon","f":[],"l":"ko","c":"열분해_로터리_킬런_10","id":"sazliZsMoyA"},{"n":81,"d":"0:14","t":"태성환경연구소 -액비화 시설 액비저장소 관리방안 10초-","v":5,"a":"5개월 전","s":"build","f":["farm"],"l":"ko","c":"액비화 시설 액비저장소 관리방안 10초","id":"yxEHsY2x6Kc"},{"n":82,"d":"0:23","t":"태성환경연구소  -아산시_바이오팜에너지 10초-","v":10,"a":"5개월 전","s":"build","f":["waste"],"l":"ko","c":"아산시_바이오팜에너지 10초","id":"pndandbXC6U"},{"n":83,"d":"0:46","t":"태성환경연구소 -수도권 매립지 슬러지자원2단계_수정_10초-","v":15,"a":"5개월 전","s":"build","f":["sewage","waste"],"l":"ko","c":"수도권 매립지 슬러지자원2단계_수정_10초","id":"XLRRWTVPOlY"},{"n":84,"d":"0:22","t":"태성환경연구소 -광주 하수슬러지 처리시설 - 건조배가스 공간악취 흐름도 10초-","v":15,"a":"5개월 전","s":"dx","f":["sewage"],"l":"ko","c":"광주 하수슬러지 처리시설 - 건조배가스 공간악취 흐름도 10초","id":"yk_SRbbTux4"},{"n":85,"d":"0:13","t":"태성환경연구소 -실험방법_NET Scrubber 10초-","v":8,"a":"5개월 전","s":"build","f":[],"l":"ko","c":"실험방법_NET Scrubber 10초","id":"1KkHNg4fWIA"},{"n":86,"d":"0:16","t":"태성환경연구소 -센서 평가영상 10초-","v":2,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"센서 평가영상 10초","id":"hYwmN4wsx7E"},{"n":87,"d":"1:57","t":"태성환경연구소  -OMS 이동식 악취 차량-","v":7,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"OMS 이동식 악취 차량","id":"lO8yIhtPTX0"},{"n":88,"d":"1:24","t":"태성환경연구소 -창성염직_old-","v":7,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"창성염직_old","id":"b9JDklcj5JQ"},{"n":89,"d":"1:25","t":"태성환경연구소 -창성염직_plan_B-","v":1,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"창성염직_plan_B","id":"aMiLfSTuzLQ"},{"n":90,"d":"1:25","t":"태성환경연구소 -창성염직_plan_A-","v":8,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"창성염직_plan_A","id":"S5nBFzX60Fw"},{"n":91,"d":"4:31","t":"태성환경연구소 -gs_칼텍스-","v":13,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"gs_칼텍스","id":"-CYjPBTaPps"},{"n":92,"d":"4:16","t":"태성환경연구소 -lg디스플레이_광저우_gp03-","v":17,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"lg디스플레이_광저우_gp03","id":"QsV-MPUv5Fg"},{"n":93,"d":"1:53","t":"태성환경연구소 -삼양사_폐수처리장_old-","v":7,"a":"5개월 전","s":"build","f":["sewage","plant"],"l":"ko","c":"삼양사_폐수처리장_old","id":"zvDalG4W1LM"},{"n":94,"d":"1:21","t":"태성환경연구소 -삼양사_폐수처리장_plan_C-","v":14,"a":"5개월 전","s":"build","f":["sewage","plant"],"l":"ko","c":"삼양사_폐수처리장_plan_C","id":"HGtBcmJopbw"},{"n":95,"d":"1:01","t":"태성환경연구소 -삼양사_폐수처리장_plan_B-","v":8,"a":"5개월 전","s":"build","f":["sewage","plant"],"l":"ko","c":"삼양사_폐수처리장_plan_B","id":"UcBOCI4SzJQ"},{"n":96,"d":"1:01","t":"태성환경연구소 -삼양사_폐수처리장_plan_A-","v":7,"a":"5개월 전","s":"build","f":["sewage","plant"],"l":"ko","c":"삼양사_폐수처리장_plan_A","id":"IM3yk0soc7E"},{"n":97,"d":"3:07","t":"태성환경연구소 -휴대용odna_펠티어-","v":1,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"휴대용odna_펠티어","id":"7IS8Djg2uFQ"},{"n":98,"d":"5:39","t":"태성환경연구소 -제주도 악취관리센터-","v":3,"a":"5개월 전","s":"ctrl","f":["city"],"l":"ko","c":"제주도 악취관리센터","id":"IKiyPtBOkJU"},{"n":99,"d":"2:21","t":"태성환경연구소 -배출구모니터링-","v":5,"a":"5개월 전","s":"mon","f":["plant"],"l":"ko","c":"배출구모니터링","id":"C3BHoWoKw7M"},{"n":100,"d":"0:34","t":"태성환경연구소 -차량배기구_시프트매스-","v":1,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"차량배기구_시프트매스","id":"JN0lfwKLTOA"},{"n":101,"d":"4:39","t":"태성환경연구소 -시프트매시_맵이동-","v":4,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"시프트매시_맵이동","id":"jzUxkTZkiPc"},{"n":102,"d":"3:03","t":"태성환경연구소 -스마트_항만-","v":8,"a":"5개월 전","s":"ctrl","f":["city"],"l":"ko","c":"스마트_항만","id":"sp0Qoi9F6uo"},{"n":103,"d":"2:16","t":"태성환경연구소 -실시간악취감시차량-","v":1,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"실시간악취감시차량","id":"qMclhglqm_k"},{"n":104,"d":"2:19","t":"태성환경연구소 -충돌식 에어믹스스크러버-","v":18,"a":"5개월 전","s":"build","f":[],"l":"ko","c":"충돌식 에어믹스스크러버","id":"iS-oQoh3Rso"},{"n":105,"d":"3:03","t":"태성환경연구소 -악취통합관리시스템플랫폼-","v":9,"a":"5개월 전","s":"ctrl","f":[],"l":"ko","c":"악취통합관리시스템플랫폼","id":"sp22rKyIqUI"},{"n":106,"d":"2:26","t":"태성환경연구소 -NC센서,휴머노이드,자동차-","v":60,"a":"5개월 전","s":"rnd","f":["car"],"l":"ko","c":"NC센서,휴머노이드,자동차","id":"cFwnH-IfR1o"},{"n":107,"d":"4:46","t":"태성환경연구소 -악취예측모니터링-","v":7,"a":"5개월 전","s":"ctrl","f":[],"l":"ko","c":"악취예측모니터링","id":"Tiu44QpiUcI"},{"n":108,"d":"4:34","t":"태성환경연구소 -악취종합관리계획_최소감지값-","v":12,"a":"5개월 전","s":"ctrl","f":[],"l":"ko","c":"악취종합관리계획_최소감지값","id":"zNsd1LEuq70"},{"n":109,"d":"3:25","t":"태성환경연구소  -아스콘-","v":14,"a":"5개월 전","s":"build","f":["plant"],"l":"ko","c":"아스콘","id":"OS0czML9IxI"},{"n":110,"d":"2:11","t":"태성환경연구소 -철탑, 여수, 원거리 화학물질 탐지장비-","v":4,"a":"5개월 전","s":"mon","f":[],"l":"ko","c":"철탑, 여수, 원거리 화학물질 탐지장비","id":"gz7rCXjDQjA"},{"n":111,"d":"0:47","t":"태성환경연구소  -플라즈마 스크러버-","v":19,"a":"5개월 전","s":"build","f":[],"l":"ko","c":"플라즈마 스크러버","id":"qzMuE0SN5HU"},{"n":112,"d":"1:37","t":"태성환경연구소 -동해전 탄소중립 시스템, 해양플랜트추가-","v":8,"a":"5개월 전","s":"carbon","f":["plant"],"l":"ko","c":"동해전 탄소중립 시스템, 해양플랜트추가","id":"vlTdsH1-zxA"},{"n":113,"d":"0:51","t":"태성환경연구소 -동해전 탄소중립 시스템-","v":3,"a":"5개월 전","s":"carbon","f":[],"l":"ko","c":"동해전 탄소중립 시스템","id":"dfpn5KPaCZ4"},{"n":114,"d":"1:23","t":"관리","v":201,"a":"1년 전","s":"ctrl","f":[],"l":"ko","c":"악취 관리 (단계 소개)","id":"UoBfwKqpgls"},{"n":115,"d":"4:01","t":"시공","v":110,"a":"2년 전","s":"build","f":[],"l":"ko","c":"악취 방지시설 시공 (단계 소개)","id":"B2UaXKCRgnU"},{"n":116,"d":"2:59","t":"악취종합관리 계획2","v":58,"a":"2년 전","s":"ctrl","f":[],"l":"ko","c":"악취종합관리 계획2","id":"roBEaw2Mr5Q"},{"n":117,"d":"1:32","t":"악취종합관리 계획","v":56,"a":"2년 전","s":"ctrl","f":[],"l":"ko","c":"악취종합관리 계획","id":"Owb9xr8KRWw"},{"n":118,"d":"2:00","t":"탄소중립 광물화시스템","v":105,"a":"2년 전","s":"carbon","f":[],"l":"ko","c":"탄소중립 광물화시스템","id":"RFXSaPQh8bE"},{"n":119,"d":"1:21","t":"사업장 악취운영관리_최소감지값","v":35,"a":"2년 전","s":"ctrl","f":["plant"],"l":"ko","c":"사업장 악취운영관리_최소감지값","id":"hm0yc158Mwk"},{"n":120,"d":"5:31","t":"Microbubble Scrubber (English)","v":59,"a":"2년 전","s":"build","f":[],"l":"en","c":"Microbubble Scrubber (English)","id":"aYYKEP5DNbI"},{"n":121,"d":"5:31","t":"마이크로 버블 스크러버 시스템(버스정류장 공기정화장치)","v":113,"a":"2년 전","s":"build","f":["city"],"l":"ko","c":"마이크로 버블 스크러버 시스템(버스정류장 공기정화장치)","id":"XaD_EFCeUhU"},{"n":122,"d":"1:18","t":"탄소중립 석유 화학단지","v":61,"a":"3년 전","s":"carbon","f":[],"l":"ko","c":"탄소중립 석유 화학단지","id":"An9tlnOpQf0"},{"n":123,"d":"2:29","t":"탄소 중립 화력 발전소","v":39,"a":"3년 전","s":"carbon","f":["plant"],"l":"ko","c":"탄소 중립 화력 발전소","id":"WjnU9baT3WU"},{"n":124,"d":"2:06","t":"탄소중립 -메탄올 디오그램","v":54,"a":"3년 전","s":"carbon","f":[],"l":"ko","c":"탄소중립 -메탄올 디오그램","id":"HVO-f1aOtRU"},{"n":125,"d":"3:58","t":"수소 필름 센서 제작 공정 영상","v":207,"a":"3년 전","s":"rnd","f":[],"l":"ko","c":"수소 필름 센서 제작 공정 영상","id":"-CLrtMAUBg4"},{"n":126,"d":"1:01","t":"OAE 장비를 이용한 분석","v":154,"a":"3년 전","s":"dx","f":[],"l":"ko","c":"OAE 장비를 이용한 분석","id":"DiCzM5hM2BM"},{"n":127,"d":"1:17","t":"태성환경연구소- 악취 추적차량","v":227,"a":"3년 전","s":"mon","f":[],"l":"ko","c":"악취 추적차량","id":"8rQL2wxcsYM"},{"n":128,"d":"1:31","t":"태성환경연구소 OAE를 이용한 분석","v":197,"a":"3년 전","s":"dx","f":[],"l":"ko","c":"OAE를 이용한 분석","id":"zhRlAQvT0F8"},{"n":129,"d":"0:23","t":"홈페이지 메인 동영상3","v":109,"a":"3년 전","s":"intro","f":[],"l":"ko","c":"홈페이지 메인 동영상3","id":"LsFZxiRxvnc"},{"n":130,"d":"3:12","t":"태성환경연구소 센서 개발","v":402,"a":"3년 전","s":"rnd","f":[],"l":"ko","c":"센서 개발","id":"ETGnnTehGkQ"},{"n":131,"d":"0:43","t":"태성환경연구소 센서 개발 - 클린룸","v":97,"a":"3년 전","s":"rnd","f":[],"l":"ko","c":"센서 개발 - 클린룸","id":"h37SHcCJwaY"},{"n":132,"d":"0:57","t":"태성환경연구소 센서 개발 - 화학실험실","v":73,"a":"3년 전","s":"rnd","f":[],"l":"ko","c":"센서 개발 - 화학실험실","id":"eKsTNndAwBY"},{"n":133,"d":"0:37","t":"태성환경연구소 센서 개발 - 증착공정실","v":288,"a":"3년 전","s":"rnd","f":[],"l":"ko","c":"센서 개발 - 증착공정실","id":"Gn6Fvfw5fug"},{"n":134,"d":"1:08","t":"태성환경연구소_메타버스_김해시_지형","v":171,"a":"4년 전","s":"ctrl","f":["city"],"l":"ko","c":"메타버스_김해시_지형","id":"B4wOCjePc64"},{"n":135,"d":"3:40","t":"태성환경연구소 축산농가 악취 통합관리, 대응시스템","v":272,"a":"4년 전","s":"ctrl","f":["farm"],"l":"ko","c":"축산농가 악취 통합관리, 대응시스템","id":"JwqxC6VlG_Q"},{"n":136,"d":"0:58","t":"태성환경연구소_하수슬러지 처리시설 - 방지시설 배관 변경 및 개조","v":338,"a":"4년 전","s":"build","f":["sewage"],"l":"ko","c":"하수슬러지 처리시설 - 방지시설 배관 변경 및 개조","id":"BONdM69q09k"},{"n":137,"d":"1:31","t":"Taesung Environment Institute_The process of chemical liquid washing tower","v":121,"a":"4년 전","s":"build","f":[],"l":"en","c":"The process of chemical liquid washing tower","id":"w7vGzGUN5Ww"},{"n":138,"d":"0:58","t":"Taesung Environment Institute_ Sewage sludge treatment facility","v":26,"a":"4년 전","s":"build","f":["sewage"],"l":"en","c":"Sewage sludge treatment facility","id":"6Edm7PK9qQQ"},{"n":139,"d":"2:26","t":"Taesung Environment Institute_Determine the Cause of Hazardous Materials in Building Materials","v":32,"a":"4년 전","s":"dx","f":["build"],"l":"en","c":"Determine the Cause of Hazardous Materials in Building Materials","id":"PBXw7mo4Rps"},{"n":140,"d":"2:49","t":"Taesung Environment Institute_Octyl Isothiazoline Chamber Test in Antibacterial Filter","v":28,"a":"4년 전","s":"dx","f":[],"l":"en","c":"Octyl Isothiazoline Chamber Test in Antibacterial Filter","id":"dIpAtgPyKz4"},{"n":141,"d":"2:57","t":"Taesung Environment Institute_Diaper SAP Test Method","v":32,"a":"4년 전","s":"dx","f":["life"],"l":"en","c":"Diaper SAP Test Method","id":"TaEYw8I55Jc"},{"n":142,"d":"4:08","t":"Taesung Environment Institute_Car interior decontamination agent, VOCs remover","v":25,"a":"4년 전","s":"dx","f":["car"],"l":"en","c":"Car interior decontamination agent, VOCs remover","id":"v34C-HGfLmU"},{"n":143,"d":"1:28","t":"Taesung Environment Institute_Restroom Deodorizing System","v":15,"a":"4년 전","s":"build","f":["life"],"l":"en","c":"Restroom Deodorizing System","id":"4Kyhu5F7bFM"},{"n":144,"d":"2:36","t":"Taesung Environment Institute_The deodorant composition and methods for manufacture","v":37,"a":"4년 전","s":"build","f":[],"l":"en","c":"The deodorant composition and methods for manufacture","id":"HLtK6KJi2qE"},{"n":145,"d":"3:13","t":"Taesung Environment Institute_A standard order of deodorant quality control proposed","v":40,"a":"4년 전","s":"dx","f":[],"l":"en","c":"A standard order of deodorant quality control proposed","id":"8F1bm2okQlI"},{"n":146,"d":"1:52","t":"Taesung Environment Institute_Developed by TSEI for the environmental industry, Drone TS1350","v":42,"a":"4년 전","s":"mon","f":[],"l":"en","c":"Developed by TSEI for the environmental industry, Drone TS1350","id":"w4DKxa-UTx4"},{"n":147,"d":"3:38","t":"Taesung Environment Institute_TSEI uses drones to trace odor sources","v":41,"a":"4년 전","s":"mon","f":[],"l":"en","c":"TSEI uses drones to trace odor sources","id":"kzeC6QRxzFQ"},{"n":148,"d":"5:39","t":"Taesung Environment Institute_The Odor Management Center in Jeju Special Self-Governing Province","v":57,"a":"4년 전","s":"ctrl","f":["city"],"l":"en","c":"The Odor Management Center in Jeju Special Self-Governing Province","id":"bCOmhQsOcQY"},{"n":149,"d":"4:19","t":"Taesung Environment Institute_Taesung Engineering","v":320,"a":"4년 전","s":"build","f":[],"l":"en","c":"Taesung Engineering","id":"VjImlJOQePo"},{"n":150,"d":"2:52","t":"Taesung Environment Institute_Integrated Odor Control System by TSEI (2)","v":68,"a":"4년 전","s":"ctrl","f":[],"l":"en","c":"Integrated Odor Control System by TSEI (2)","id":"fi2dod6WdwY"},{"n":151,"d":"5:29","t":"Taesung Environment Institute_Integrated Odor Control System by TSEI","v":158,"a":"4년 전","s":"ctrl","f":[],"l":"en","c":"Integrated Odor Control System by TSEI","id":"mwRaU47K4U4"},{"n":152,"d":"3:05","t":"태성환경연구소 소농장 VR 영상","v":69,"a":"4년 전","s":"build","f":["farm"],"l":"ko","c":"소농장 VR 영상","id":"L-GsV1aEdGk"},{"n":153,"d":"1:26","t":"태성환경연구소 완성차 악취토탈솔루션 VR 영상","v":14,"a":"4년 전","s":"dx","f":["car"],"l":"ko","c":"완성차 악취토탈솔루션 VR 영상","id":"d4BjiVlNub0"},{"n":154,"d":"3:12","t":"태성환경연구소 건축자재 유해물질 방출 VR 영상","v":76,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"건축자재 유해물질 방출 VR 영상","id":"b1h1qSCRRyw"},{"n":155,"d":"1:49","t":"태성환경연구소 센서를 이용한 건축자재 오염물질 방출량 예측","v":52,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"센서를 이용한 건축자재 오염물질 방출량 예측","id":"MPLEieN1hTs"},{"n":156,"d":"2:26","t":"태성환경연구소 건축자재 유해물질 원인규명","v":74,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"건축자재 유해물질 원인규명","id":"EDC3lr8Irlw"},{"n":157,"d":"2:21","t":"태성환경연구소 건축자재 소형챔버 분석법 교육영상_판상","v":302,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"건축자재 소형챔버 분석법 교육영상_판상","id":"bvzUdaSYp4M"},{"n":158,"d":"2:12","t":"태성환경연구소 건축자재 소형챔버 분석법 교육영상_벽지","v":139,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"건축자재 소형챔버 분석법 교육영상_벽지","id":"xZbNjAV1cUc"},{"n":159,"d":"2:23","t":"태성환경연구소 건축자재 소형챔버 분석법 교육영상_실란트","v":194,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"건축자재 소형챔버 분석법 교육영상_실란트","id":"MHYjaywvREw"},{"n":160,"d":"2:34","t":"태성환경연구소 건축자재 소형챔버 분석법 교육영상_페인트","v":156,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"건축자재 소형챔버 분석법 교육영상_페인트","id":"7pU2m6zPcVY"},{"n":161,"d":"2:42","t":"태성환경연구소 건축자재 소형챔버 분석법 교육영상_접착제","v":212,"a":"4년 전","s":"dx","f":["build"],"l":"ko","c":"건축자재 소형챔버 분석법 교육영상_접착제","id":"tbF_GyoYZDQ"},{"n":162,"d":"1:43","t":"태성환경연구소 자동차 시트 냄새 원인물질 분석 (소리가 없는 영상입니다.)","v":35,"a":"4년 전","s":"dx","f":["car"],"l":"ko","c":"자동차 시트 냄새 원인물질 분석 (소리가 없는 영상입니다.)","id":"FKMaZDAiYzM"},{"n":163,"d":"1:35","t":"태성환경연구소 자동차 에어필터 비교 (소리가 없는 영상입니다.)","v":20,"a":"4년 전","s":"dx","f":["car"],"l":"ko","c":"자동차 에어필터 비교 (소리가 없는 영상입니다.)","id":"Bgenvw70zhY"},{"n":164,"d":"1:03","t":"태성환경연구소 에어컨 냄새 개선 방안 (소리가 없는 영상입니다.)","v":11,"a":"4년 전","s":"build","f":["car"],"l":"ko","c":"에어컨 냄새 개선 방안 (소리가 없는 영상입니다.)","id":"5GFTP4OgPOQ"},{"n":165,"d":"1:33","t":"태성환경연구소 중고차 에어컨 냄새평가 방법 (소리가 없는 영상입니다.)","v":8,"a":"4년 전","s":"dx","f":["car"],"l":"ko","c":"중고차 에어컨 냄새평가 방법 (소리가 없는 영상입니다.)","id":"Lk0MJbt22ew"},{"n":166,"d":"0:32","t":"태성환경연구소 에어컨 벤치 시스템 (소리가 없는 영상입니다.)","v":65,"a":"4년 전","s":"dx","f":["car"],"l":"ko","c":"에어컨 벤치 시스템 (소리가 없는 영상입니다.)","id":"igILcW6IwQY"},{"n":167,"d":"6:01","t":"태성환경연구소 축사관리 프로그램 영상매뉴얼","v":37,"a":"4년 전","s":"ctrl","f":["farm"],"l":"ko","c":"축사관리 프로그램 영상매뉴얼","id":"qpchfIR34_I"},{"n":168,"d":"2:58","t":"태성환경연구소 축사방지시설 Plan (소리가 없는 영상입니다.)","v":66,"a":"4년 전","s":"build","f":["farm"],"l":"ko","c":"축사방지시설 Plan (소리가 없는 영상입니다.)","id":"ICgYTOUBXCk"},{"n":169,"d":"3:36","t":"태성환경연구소 축사 악취 저감 적용 기술","v":90,"a":"4년 전","s":"build","f":["farm"],"l":"ko","c":"축사 악취 저감 적용 기술","id":"JPy9ghW4AMw"},{"n":170,"d":"8:54","t":"태성환경연구소 악취 민원 해결 최적화 관제 시스템 (소리있는 ver.)","v":37,"a":"4년 전","s":"ctrl","f":["city"],"l":"ko","c":"악취 민원 해결 최적화 관제 시스템 (소리있는 ver.)","id":"1tu2rkYij2o"},{"n":171,"d":"3:07","t":"태성환경연구소 휴대용 ODNA, 필티어","v":12,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"휴대용 ODNA, 필티어","id":"EmVh88lc1Gk"},{"n":172,"d":"2:49","t":"태성환경연구소 에어컨 필터 평가 전용 형틀","v":5,"a":"4년 전","s":"dx","f":["car"],"l":"ko","c":"에어컨 필터 평가 전용 형틀","id":"C659r1Wyecs"},{"n":173,"d":"6:24","t":"태성환경연구소 완성차 악취토탈솔루션","v":15,"a":"4년 전","s":"dx","f":["car"],"l":"ko","c":"완성차 악취토탈솔루션","id":"meRkwJyhfow"},{"n":174,"d":"3:13","t":"태성환경연구소 탈취제 품질관리 표준지시서","v":47,"a":"4년 전","s":"dx","f":[],"l":"ko","c":"탈취제 품질관리 표준지시서","id":"yJ8PEmmunfY"},{"n":175,"d":"13:02","t":"태성환경연구소 지정 악취 분석 _암모니아","v":1100,"a":"4년 전","s":"dx","f":[],"l":"ko","c":"지정 악취 분석 _암모니아","id":"ON8HULK9kgc"},{"n":176,"d":"4:42","t":"태성환경연구소 최소감지값을 이용한 악취발생원 냄새원인 규명","v":61,"a":"4년 전","s":"dx","f":[],"l":"ko","c":"최소감지값을 이용한 악취발생원 냄새원인 규명","id":"qDyHnUMmHnA"},{"n":177,"d":"2:46","t":"태성환경연구소 SIFT-MS 악취모니터링 (소리가 없는 영상입니다.)","v":118,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"SIFT-MS 악취모니터링 (소리가 없는 영상입니다.)","id":"rTIQANk8p-I"},{"n":178,"d":"3:46","t":"태성환경연구소 복합악취분석","v":851,"a":"4년 전","s":"dx","f":[],"l":"ko","c":"복합악취분석","id":"OCy9s_6FR1Y"},{"n":179,"d":"0:48","t":"태성환경연구소_복합탈취기","v":696,"a":"4년 전","s":"build","f":[],"l":"ko","c":"복합탈취기","id":"lrEafJ8kpcY"},{"n":180,"d":"2:36","t":"태성환경연구소 소취성 조성물 및 이의 제조방법","v":49,"a":"4년 전","s":"build","f":[],"l":"ko","c":"소취성 조성물 및 이의 제조방법","id":"4yXKbl6xOos"},{"n":181,"d":"2:35","t":"태성환경연구소 하수슬러지 처리시설_건조배가스_공간악취","v":467,"a":"4년 전","s":"dx","f":["sewage"],"l":"ko","c":"하수슬러지 처리시설_건조배가스_공간악취","id":"vFEp60X0qDY"},{"n":182,"d":"1:46","t":"태성환경연구소 스크러버 시뮬레이션 프로그램 (소리가 없는 영상입니다.)","v":100,"a":"4년 전","s":"build","f":[],"l":"ko","c":"스크러버 시뮬레이션 프로그램 (소리가 없는 영상입니다.)","id":"tS-7MdJ1YC4"},{"n":183,"d":"0:36","t":"태성환경연구소 자원화시설 시뮬레이션 (소리가 없는 영상입니다.)","v":34,"a":"4년 전","s":"build","f":["waste"],"l":"ko","c":"자원화시설 시뮬레이션 (소리가 없는 영상입니다.)","id":"ghMhDnGwi8M"},{"n":184,"d":"1:16","t":"태성환경연구소 자동 집하시설 악취 컨설팅","v":151,"a":"4년 전","s":"build","f":["waste"],"l":"ko","c":"자동 집하시설 악취 컨설팅","id":"PYr734ifHcs"},{"n":185,"d":"4:18","t":"태성환경연구소 엔지니어링 소개 영상","v":459,"a":"4년 전","s":"build","f":[],"l":"ko","c":"엔지니어링 소개 영상","id":"m0qDXr-THUA"},{"n":186,"d":"1:23","t":"태성환경연구소 드론 활용 모델 시연회","v":94,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"드론 활용 모델 시연회","id":"STDjQw0g3FY"},{"n":187,"d":"1:01","t":"태성환경연구소 TS1350 드론 시험 비행","v":29,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"TS1350 드론 시험 비행","id":"hCtaq3i-9Vk"},{"n":188,"d":"1:57","t":"태성환경연구소 TS1350드론 소개","v":150,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"TS1350드론 소개","id":"UUbBB7hUi2E"},{"n":189,"d":"4:21","t":"태성환경연구소 악취모니터링설비_OMS장비","v":98,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"악취모니터링설비_OMS장비","id":"JT1t6yaAhFI"},{"n":190,"d":"3:24","t":"태성환경연구소 포터블 센서 장비","v":36,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"포터블 센서 장비","id":"lO6AA97zMpg"},{"n":191,"d":"2:21","t":"태성환경연구소 배출구 악취 모니터링 장비","v":80,"a":"4년 전","s":"mon","f":["plant"],"l":"ko","c":"배출구 악취 모니터링 장비","id":"h5QjJ5QeAQ0"},{"n":192,"d":"3:03","t":"태성환경연구소 스마트 항만 환경관리 플랫폼","v":22,"a":"4년 전","s":"ctrl","f":["city"],"l":"ko","c":"스마트 항만 환경관리 플랫폼","id":"QOrSwGQ8a_A"},{"n":193,"d":"1:15","t":"태성환경연구소 부산광역시 기장군 프로그램 시연 영상 (소리가 없는 영상입니다.)","v":29,"a":"4년 전","s":"ctrl","f":["city"],"l":"ko","c":"부산광역시 기장군 프로그램 시연 영상 (소리가 없는 영상입니다.)","id":"Zsx_Hoz-6KY"},{"n":194,"d":"4:39","t":"태성환경연구소 실시간 악취 감시 차량 (소리가 없는 영상입니다.)","v":41,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"실시간 악취 감시 차량 (소리가 없는 영상입니다.)","id":"R1hum7tnOZY"},{"n":195,"d":"2:16","t":"태성환경연구소 실시간 악취 감시 차량을 이용한 악취 추적 시스템 (소리가 없는 영상입니다.)","v":67,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"실시간 악취 감시 차량을 이용한 악취 추적 시스템 (소리가 없는 영상입니다.)","id":"Vsbs-5umZB4"},{"n":196,"d":"1:35","t":"태성환경연구소 실시간 악취 감시 차량 내외부","v":48,"a":"4년 전","s":"mon","f":[],"l":"ko","c":"실시간 악취 감시 차량 내외부","id":"BeAJ1Ll_D44"},{"n":197,"d":"3:57","t":"태성환경연구소  울산광역시 악취예보모니터링시스템","v":81,"a":"4년 전","s":"ctrl","f":["city"],"l":"ko","c":"울산광역시 악취예보모니터링시스템","id":"pUGMy1kA2vw"},{"n":198,"d":"3:58","t":"태성환경연구소 악취예측시스템","v":138,"a":"4년 전","s":"ctrl","f":[],"l":"ko","c":"악취예측시스템","id":"3a22gD0nQwo"},{"n":199,"d":"6:57","t":"태성환경연구소 악취 민원 해결 최적화 관제 시스템 (소리가 없는 영상입니다.)","v":35,"a":"4년 전","s":"ctrl","f":["city"],"l":"ko","c":"악취 민원 해결 최적화 관제 시스템 (소리가 없는 영상입니다.)","id":"1ll-saJWH2g"},{"n":200,"d":"4:43","t":"태성환경연구소 악취추적모니터링시스템","v":714,"a":"4년 전","s":"ctrl","f":[],"l":"ko","c":"악취추적모니터링시스템","id":"yQom_f6-4aM"},{"n":201,"d":"5:29","t":"태성환경연구소 악취통합관제시스템","v":194,"a":"4년 전","s":"ctrl","f":[],"l":"ko","c":"악취통합관제시스템","id":"Nv_6FU_roMQ"},{"n":202,"d":"5:24","t":"태성환경연구소 스마트클라우드 시스템","v":29,"a":"4년 전","s":"ctrl","f":[],"l":"ko","c":"스마트클라우드 시스템","id":"-HS_ziOyHbY"},{"n":203,"d":"4:11","t":"태성환경연구소 초연결 초지능화 시스템","v":71,"a":"4년 전","s":"ctrl","f":[],"l":"ko","c":"초연결 초지능화 시스템","id":"jE9m_Zm8o60"},{"n":204,"d":"3:33","t":"태성환경연구소 2018.11 중국 바이어 방문 및 드론미션 시연","v":39,"a":"4년 전","s":"intro","f":[],"l":"ko","c":"2018.11 중국 바이어 방문 및 드론미션 시연","id":"ydN4MdoE0aQ"},{"n":205,"d":"1:57","t":"태성환경연구소 2019.01 부안군 내방","v":22,"a":"4년 전","s":"intro","f":["city"],"l":"ko","c":"2019.01 부안군 내방","id":"XofzlJZkKRQ"},{"n":206,"d":"3:13","t":"태성환경연구소 V2","v":613,"a":"4년 전","s":"intro","f":[],"l":"ko","c":"회사 소개 영상 V2","id":"6Qw3GnLOj8g"},{"n":207,"d":"3:55","t":"태성환경연구소  중국어 v1r. / Introduction to Taesung Environmental Research Institute in Chinese ver.","v":57,"a":"4년 전","s":"intro","f":[],"l":"ko","c":"중국어 v1r. / Introduction to Taesung Environmental Research Institute in Chinese ver.","id":"M0kaOP4GjzY"},{"n":208,"d":"6:47","t":"태성환경연구소 v1","v":340,"a":"4년 전","s":"intro","f":[],"l":"ko","c":"회사 소개 영상 v1","id":"6agUIi0X13A"},{"n":209,"d":"0:41","t":"홈페이지 메인 동영상2","v":67,"a":"5년 전","s":"intro","f":[],"l":"ko","c":"홈페이지 메인 동영상2","id":"_5rp6X1kAjo"},{"n":210,"d":"2:24","t":"통합 모니터링","v":223,"a":"6년 전","s":"ctrl","f":[],"l":"ko","c":"통합 모니터링","id":"5yaqr-PPr7s"},{"n":211,"d":"0:49","t":"래핑 화이트 test big D","v":55,"a":"6년 전","s":"intro","f":[],"l":"ko","c":"래핑 화이트 test big D","id":"n6JQr0Dus5U"},{"n":212,"d":"0:13","t":"태성환경연구소 악취감시차량 랩핑용 영상","v":42,"a":"6년 전","s":"intro","f":[],"l":"ko","c":"악취감시차량 랩핑용 영상","id":"PBzS-u564YY"},{"n":213,"d":"0:13","t":"태성환경연구소 실시간악취감시차량","v":91,"a":"6년 전","s":"mon","f":[],"l":"ko","c":"실시간악취감시차량","id":"pkKuCOGLrY8"},{"n":214,"d":"5:39","t":"제주 관리센터 홍보영상","v":119,"a":"8년 전","s":"ctrl","f":["city"],"l":"ko","c":"제주 관리센터 홍보영상","id":"sKYc-0TMLW8"},{"n":215,"d":"4:35","t":"악취 종합 병원","v":185,"a":"8년 전","s":"intro","f":[],"l":"ko","c":"악취 종합 병원","id":"CvKVecloF1k"},{"n":216,"d":"2:34","t":"냄새재현키트","v":81,"a":"8년 전","s":"dx","f":[],"l":"ko","c":"냄새재현키트","id":"o35_OJQRy3o"},{"n":217,"d":"1:28","t":"감성 시스템 화장실편","v":283,"a":"8년 전","s":"build","f":["life"],"l":"ko","c":"감성 시스템 화장실편","id":"wjk_MIij_Fc"},{"n":218,"d":"0:40","t":"홈페이지 메인 동영상","v":256,"a":"9년 전","s":"intro","f":[],"l":"ko","c":"홈페이지 메인 동영상","id":"WI4lAhDs9uI"},{"n":219,"d":"0:38","t":"4차 악취혁명","v":41,"a":"9년 전","s":"intro","f":[],"l":"ko","c":"4차 악취혁명","id":"-nJOu4Oodd8"},{"n":220,"d":"6:24","t":"완성차 악취토탈솔루션","v":46,"a":"9년 전","s":"dx","f":["car"],"l":"ko","c":"완성차 악취토탈솔루션","id":"J3d6PYl9200"},{"n":221,"d":"1:16","t":"드론을 이용한 악취시료 추적 및 채취 장비","v":492,"a":"9년 전","s":"mon","f":[],"l":"ko","c":"드론을 이용한 악취시료 추적 및 채취 장비","id":"ZdXDGOtabcI"},{"n":222,"d":"0:58","t":"표준 관능액 제조 영상","v":239,"a":"10년 전","s":"dx","f":[],"l":"ko","c":"표준 관능액 제조 영상","id":"t1WN1H3rTwk"},{"n":223,"d":"0:35","t":"냄새평가 및 재현","v":305,"a":"10년 전","s":"dx","f":[],"l":"ko","c":"냄새평가 및 재현","id":"8dmGODoXQwc"},{"n":224,"d":"0:44","t":"냄새 재현 키트","v":150,"a":"10년 전","s":"dx","f":[],"l":"ko","c":"냄새 재현 키트","id":"tCsQyocMsLc"}];
+const CHANNEL = "https://www.youtube.com/@태성환경연구소";
+const PHONE = "052-0000-0000"; // 과제용 예시 번호. 실제 운영 시 회사 고객센터 번호로 교체
+const PHONE_TAG = `<b class="mono">${PHONE}</b> <span class="kind demo">예시 번호</span>`;
+const STAGE = {
+  dx:{name:"진단·분석",c:"var(--dx)"}, build:{name:"설계·시공",c:"var(--build)"}, mon:{name:"모니터링 장비",c:"var(--mon)"},
+  ctrl:{name:"관제·예측",c:"var(--ctrl)"}, rnd:{name:"센서·신기술",c:"var(--rnd)"}, carbon:{name:"탄소중립",c:"var(--carbon)"}, intro:{name:"회사 소개",c:"var(--intro)"}
+};
+const FIELD = {farm:"축산", sewage:"하수·폐수", plant:"공장·산업단지", waste:"폐기물·자원화", car:"자동차", build:"건축자재", city:"지자체·민원", life:"생활·공공시설"};
+const PATH = [
+  {k:"dx", name:"진단", desc:"시료 채취와 분석으로 냄새의 원인 물질을 찾습니다.", vs:"dx", c:"var(--dx)"},
+  {k:"design", name:"설계", desc:"원인에 맞는 방지시설과 공정 개선안을 설계합니다.", vs:"build", c:"var(--build)"},
+  {k:"build", name:"시공", desc:"세정탑, 바이오필터 등 방지시설을 설치하고 개조합니다.", vs:"build", c:"var(--build)"},
+  {k:"mon", name:"모니터링", desc:"센서, 감시차량, 드론으로 악취를 실시간 측정합니다.", vs:"mon", c:"var(--mon)"},
+  {k:"ctrl", name:"관제", desc:"통합관제와 예측으로 민원이 생기기 전에 대응합니다.", vs:"ctrl", c:"var(--ctrl)"}
+];
+const Q = [
+  {k:"who", title:"어떤 입장이신가요?", opts:[
+    ["biz","사업장 운영·관리자","공장, 농장, 처리시설 등"],["gov","지자체·공공기관 담당자","민원, 지역 악취 관리"],
+    ["res","인근 주민","생활 중 악취 피해"],["maker","제품 제조사","자동차, 건축자재 등 제품 냄새"]]},
+  {k:"src", title:"냄새가 나는 곳은 어디인가요?", opts:[
+    ["farm","축산·농장"],["sewage","하수·폐수·슬러지 처리"],["plant","공장·산업단지"],["waste","음식물·폐기물·매립·자원화"],
+    ["car","자동차 실내·부품"],["build","건축자재·실내 공간"],["life","화장실 등 생활·공공시설"],["etc","잘 모르겠음"]]},
+  {k:"smell", title:"어떤 냄새에 가까운가요?", hint:"두 개까지 고를 수 있습니다.", multi:2, opts:[
+    ["egg","썩은 달걀"],["cabbage","썩은 양파·양배추"],["ammonia","지린내, 코를 찌름"],["fish","생선 비린내"],
+    ["sour","시큼한 땀·발 냄새"],["solvent","페인트·신나·본드"],["pungent","매캐하고 자극적"],["burnt","타는 냄새·아스팔트"],["unknown","설명하기 어려움"]]},
+  {k:"pat", title:"언제 심해지나요?", opts:[
+    ["always","거의 항상"],["time","야간·새벽 등 특정 시간"],["process","특정 공정·작업 때"],["weather","날씨·바람 방향에 따라"],["random","불규칙해서 예측이 어려움"]]},
+  {k:"sit", title:"지금 상황은 어떤가요?", opts:[
+    ["order","행정처분·개선명령을 받음"],["complaint","민원이 들어오고 있음"],["weak","방지시설이 있지만 효과 부족"],
+    ["none","방지시설이 아직 없음"],["new","신규 시설을 계획 중"],["prevent","문제는 없지만 미리 관리하고 싶음"]]}
+];
+// 냄새 인상 → 지정악취물질(악취방지법 22종) 후보. 일반적으로 알려진 대응 방식만 안내.
+const SMELL = {
+  egg:{g:"황화합물", chem:"황화수소", why:"유기물이 산소 없이 부패할 때 주로 생깁니다. 하수, 슬러지, 분뇨 저장조에서 흔합니다.", fix:"약액 세정(알칼리), 바이오필터", kw:["세정탑","바이오필터","슬러지","스크러버"]},
+  cabbage:{g:"황화합물", chem:"메틸메르캅탄, 황화메틸, 이황화메틸", why:"아주 낮은 농도에서도 느껴져 민원으로 이어지기 쉽습니다.", fix:"약액 세정(산화), 바이오필터, 활성탄", kw:["세정탑","바이오필터","최소감지값"]},
+  ammonia:{g:"질소화합물", chem:"암모니아", why:"분뇨, 퇴비화, 폐수의 질소 성분에서 나옵니다.", fix:"산 세정, 바이오필터", kw:["암모니아","축사","액비","세정탑"]},
+  fish:{g:"질소화합물", chem:"트라이메틸아민", why:"단백질이 분해될 때 생기며 축산·수산·음식물 처리에서 흔합니다.", fix:"산 세정, 바이오필터", kw:["축사","복합악취"]},
+  sour:{g:"지방산류", chem:"프로피온산, 뷰티르산, 발레르산", why:"유기물 발효 과정에서 생기며 축산과 음식물 처리에서 흔합니다.", fix:"알칼리 세정, 바이오필터", kw:["축사","복합탈취기","자원화"]},
+  solvent:{g:"휘발성유기화합물(VOC)", chem:"톨루엔, 자일렌, 스타이렌, 메틸에틸케톤 등", why:"도장, 인쇄, 접착, 화학 공정과 내장재·건축자재에서 방출됩니다.", fix:"활성탄 흡착, 연소 산화(RTO 등)", kw:["voc","건축자재","자동차","챔버"]},
+  pungent:{g:"알데하이드류", chem:"아세트알데하이드, 프로피온알데하이드, 뷰틸알데하이드 등", why:"가열·산화 공정, 연소, 일부 화학 공정에서 생깁니다.", fix:"약액 세정, 흡착, 연소 산화", kw:["스크러버","분석","복합악취"]},
+  burnt:{g:"복합 성분(고온 공정)", chem:"VOC와 황화합물이 섞인 복합악취", why:"아스콘, 건조, 소각 등 고온 공정에서 여러 물질이 함께 나옵니다.", fix:"집진 후 세정, 연소 산화", kw:["아스콘","건조배가스","스크러버"]},
+  unknown:{g:"복합악취", chem:"원인 물질 미상", why:"여러 물질이 섞이면 사람 코로는 구분하기 어렵습니다. 복합악취 측정과 기기분석으로 기여도가 큰 물질부터 찾아야 합니다.", fix:"원인 규명 후 결정", kw:["복합악취","최소감지값","원인"]}
+};
+// 태성환경연구소 홈페이지 '엔지니어링 실적'에 게시된 실적 (출처: ts-ei.com/consulting)
+const CASES = [
+  {y:2022,f:"plant",t:"사업장 내 악취 저감 컨설팅",o:"신대한정유산업"},
+  {y:2022,f:"sewage",t:"폐수처리시설 암모니아 전처리설비 시공",o:"이앤워터솔루션"},
+  {y:2021,f:"plant",t:"TDI 제조공정 악취 개선방안 도출",o:"한화솔루션"},
+  {y:2021,f:"plant",t:"NCC공장 전처리시설 기본 설계 및 측정·분석 용역",o:"한화토탈"},
+  {y:2021,f:"plant",t:"MBS 복합악취 개선 Process 설계",o:"LG화학"},
+  {y:2020,f:"plant",t:"VMS(VCU) 악취 저감 컨설팅 용역",o:"금호석유화학"},
+  {y:2020,f:"sewage",t:"안양 공공하수처리시설 개선 보완사업 실시설계 악취 진단",o:"삼안, 범한"},
+  {y:2020,f:"plant",t:"제조 공정 내 발생 악취 진단 및 방지시설 개선 방안 도출",o:"에스에프시 여수"},
+  {y:2019,f:"waste",t:"판교 크린넷 자동집하시설 악취 진단 및 개선 방안 도출",o:"브니엘네이처"},
+  {y:2019,f:"waste",t:"송도 생활폐기물 자동집하시설 악취 개선방안 도출",o:"브니엘네이처"},
+  {y:2018,f:"plant",t:"삼성전기 천진공장 방지시설 악취 측정용역",o:"삼성엔지니어링"},
+  {y:2017,f:"plant",t:"삼성전자 탕정사업장 악취 방지시설 원인물질 분석",o:"삼성엔지니어링"}
+];
+const FLOW = ["접수","진단","설계","시공","모니터링","관제"];
+const LV = {crit:"긴급", warn:"주의", ok:"관심"};
+
+/* ========== 도우미 ========== */
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtViews = n => n >= 1000 ? (n/1000).toFixed(1).replace(/\.0$/,"") + "천" : String(n);
+const vurl = v => v.id ? "https://www.youtube.com/watch?v=" + v.id : CHANNEL + "/search?query=" + encodeURIComponent(v.t);
+const store = {
+  get(k, d){ try { const x = localStorage.getItem(k); return x ? JSON.parse(x) : d; } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+};
+const optLabel = (qk, v) => { const q = Q.find(q => q.k === qk); const o = q.opts.find(o => o[0] === v); return o ? o[1] : v; };
+
+/* ========== 영상 카드 ========== */
+function vcard(v, why){
+  const st = STAGE[v.s];
+  const thumb = ` style="--c:${st.c}"`;
+  const img = v.id ? `<img loading="lazy" alt="" src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" onerror="this.remove()">` : "";
+  const tags = v.f.map(f => `<span class="tag f">${FIELD[f]}</span>`).join("");
+  return `<button type="button" class="card vrow" data-v="${v.n}">
+    <span class="thumb"${thumb}>${img}<em>${st.name}</em><span class="mono">${v.d}</span></span>
+    <span class="vinfo"><b>${esc(v.c)}</b><span class="vmeta">${tags}<span>조회 ${fmtViews(v.v)}</span><span>${esc(v.a)}</span>${v.l==="en"?"<span>영문</span>":""}</span>${why?`<span class="why">추천 이유: ${esc(why)}</span>`:""}</span>
+  </button>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-v]"); if (!b) return;
+  const v = VIDEOS[+b.dataset.v]; if (!v) return;
+  $("#m-title").textContent = v.c; $("#m-link").href = vurl(v);
+  $("#frame").innerHTML = v.id
+    ? `<iframe src="https://www.youtube-nocookie.com/embed/${v.id}?rel=0" title="${esc(v.c)}" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>`
+    : `<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;padding:20px;text-align:center"><span class="tag" style="background:${STAGE[v.s].c}">${STAGE[v.s].name}</span><b style="font-size:18px">${esc(v.c)}</b><span style="opacity:.75;font-size:14px">재생 시간 ${v.d} · 아래 버튼으로 유튜브에서 재생합니다</span></div>`;
+  $("#modal").classList.add("on");
+});
+// 미리보기처럼 외부 영상 삽입이 막힌 환경에서는 안내 문구로 대체
+document.addEventListener("securitypolicyviolation", e => { if (/frame/.test(e.violatedDirective || "") && $("#modal").classList.contains("on")) $("#frame").innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#fff;padding:20px;text-align:center;font-size:14px">이 미리보기 환경에서는 사이트 내 재생이 차단됩니다.<br>배포된 주소에서는 여기서 바로 재생되며, 지금은 아래 버튼으로 유튜브에서 볼 수 있습니다.</div>`; });
+function closeModal(){ $("#modal").classList.remove("on"); $("#frame").innerHTML = ""; }
+$("#m-x").onclick = closeModal;
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); toggleChat(false); } });
+
+/* ========== 홈 ========== */
+$("#vcount").textContent = VIDEOS.length; $("#vcount2").textContent = VIDEOS.length; $("#vcount3").textContent = VIDEOS.length;
+$("#who-quick").innerHTML = Q[0].opts.map(o => `<button type="button" class="card" data-who="${o[0]}"><b>${o[1]}</b><span>${o[2]}</span></button>`).join("");
+$("#who-quick").addEventListener("click", e => { const b = e.target.closest("[data-who]"); if (!b) return; ans.who = b.dataset.who; syncForm(); location.hash = "checkup"; });
+$("#path").innerHTML = PATH.map(p => {
+  const n = VIDEOS.filter(v => v.s === p.vs).length;
+  return `<a class="card" href="#videos" data-stage="${p.vs}" style="--c:${p.c}"><b>${p.name}</b><span>${p.desc}</span><i>관련 영상 ${n}편</i></a>`;
+}).join("");
+$("#path").addEventListener("click", e => { const a = e.target.closest("[data-stage]"); if (a) { vf.stage = a.dataset.stage; vf.field = "all"; vf.q = ""; $("#q").value = ""; vf.shown = 20; renderVideos(); } });
+$("#top-videos").innerHTML = VIDEOS.slice().sort((a,b) => b.v - a.v).slice(0,6).map(vcard).join("");
+
+/* ========== 문진 ========== */
+const ans = {who:null, src:null, smell:[], pat:null, sit:null};
+$("#form").innerHTML = Q.map((q,i) => `<div class="card q"><fieldset><legend><span class="qnum">${i+1}/5</span>${q.title}</legend>${q.hint?`<p class="hint">${q.hint}</p>`:""}
+  <div class="opts">${q.opts.map(o => `<label><input type="${q.multi?"checkbox":"radio"}" name="${q.k}" id="q-${q.k}-${o[0]}" value="${o[0]}"><span>${o[1]}${o[2]?`<small>${o[2]}</small>`:""}</span></label>`).join("")}</div></fieldset></div>`).join("");
+$("#form").addEventListener("change", e => {
+  const el = e.target, q = Q.find(q => q.k === el.name); if (!q) return;
+  if (q.multi) {
+    let arr = ans[q.k].filter(x => x !== el.value);
+    if (el.checked) arr.push(el.value);
+    if (arr.length > q.multi) arr = arr.slice(-q.multi);
+    ans[q.k] = arr;
+  } else ans[q.k] = el.value;
+  syncForm();
+});
+function syncForm(){
+  Q.forEach(q => q.opts.forEach(o => { const el = $(`#q-${q.k}-${o[0]}`); el.checked = q.multi ? ans[q.k].includes(o[0]) : ans[q.k] === o[0]; }));
+  const done = [ans.who, ans.src, ans.smell.length ? 1 : null, ans.pat, ans.sit].filter(Boolean).length;
+  $("#prog-text").textContent = `5개 중 ${done}개 선택`;
+  $("#prog-bar").style.width = (done * 20) + "%";
+  $("#go").disabled = done < 5;
+}
+$("#go").onclick = () => { current = diagnose(ans); store.set("barogo.current", current); location.hash = "chart"; };
+
+/* ========== 진단 로직 ========== */
+function diagnose(a){
+  // 긴급도
+  let score = {order:3, complaint:2, weak:2, none:2, new:1, prevent:0}[a.sit];
+  if (a.pat === "always") score += 1;
+  const lv = score >= 3 ? "crit" : score >= 2 ? "warn" : "ok";
+  // 진료 경로
+  const st = {dx:"core", design:"opt", build:"opt", mon:"opt", ctrl:"opt"};
+  const why = {
+    dx:"원인 물질과 발생 지점을 먼저 확정해야 이후 투자가 헛되지 않습니다.",
+    design:"", build:"", mon:"", ctrl:""
+  };
+  if (["none","weak","order","new"].includes(a.sit)) {
+    st.design = "core"; st.build = "next";
+    why.design = a.sit === "weak" ? "기존 방지시설이 원인 물질에 맞는지 재검토하고 개선안을 설계합니다." : a.sit === "new" ? "계획 단계에서 악취 발생량을 예측해 시설에 반영합니다." : "원인 물질에 맞는 방지시설을 선정하고 설계합니다.";
+    why.build = a.sit === "weak" ? "필요한 부분만 개조해 비용을 줄입니다." : "설계안에 따라 방지시설을 설치합니다.";
+  }
+  if (["time","weather","random"].includes(a.pat) || ["complaint","prevent","order"].includes(a.sit)) {
+    st.mon = st.mon === "opt" ? (a.sit === "prevent" ? "core" : "next") : st.mon;
+    why.mon = a.pat === "weather" ? "풍향·기상과 함께 측정해야 발생 조건을 잡을 수 있습니다." : a.pat === "time" || a.pat === "random" ? "사람이 없는 시간에도 24시간 측정해 발생 패턴을 찾습니다." : "개선 전후 효과를 수치로 확인합니다.";
+  }
+  if (a.who === "gov" || a.sit === "prevent" || (a.sit === "complaint" && ["weather","random"].includes(a.pat))) {
+    st.ctrl = a.who === "gov" ? "core" : "next";
+    why.ctrl = a.who === "gov" ? "여러 배출원과 민원을 한 화면에서 추적하고 예측합니다." : "민원이 생기기 전에 미리 알림을 받아 대응합니다.";
+  }
+  if (a.who === "res") { st.dx = "next"; st.ctrl = "core"; why.dx = "배출 사업장이나 지자체가 의뢰하면 원인 규명이 진행됩니다."; why.ctrl = "민원 정보와 감시차량·센서 데이터를 결합해 배출원을 추적합니다."; }
+  if (a.who === "maker") { why.dx = "챔버 시험과 기기분석으로 제품에서 방출되는 냄새 성분을 찾습니다."; }
+  // 처방 영상
+  const wantStages = PATH.filter(p => st[p.k] !== "opt").map(p => p.vs);
+  const kws = a.smell.flatMap(s => SMELL[s].kw);
+  const rxWhy = {};
+  const scored = VIDEOS.map(v => {
+    let s = 0; const w = [];
+    if (v.f.includes(a.src)) { s += 4; w.push(FIELD[a.src] + " 분야"); }
+    if (a.who === "gov" && v.f.includes("city")) s += 2;
+    if (a.who === "res" && (v.t.includes("민원") || v.f.includes("city"))) s += 3;
+    const wi = wantStages.indexOf(v.s); if (wi >= 0) { s += 3 - Math.min(wi, 2) * 0.5; w.push(STAGE[v.s].name + " 단계"); }
+    const tl = v.t.toLowerCase(); kws.forEach(k => { if (tl.includes(k.toLowerCase())) { s += 1.5; if (!w.includes(k + " 관련")) w.push(k + " 관련"); } });
+    if (["intro","rnd","carbon"].includes(v.s)) s -= 4;
+    if (v.t.includes("10초") || v.l === "en") s -= 2;
+    if (/old|plan_|test|랩핑|래핑/i.test(v.t)) s -= 1;
+    s += Math.min(Math.log10(v.v + 1), 3) * 0.4;
+    rxWhy[v.n] = w.slice(0, 3).join(", ");
+    return [s, v];
+  }).sort((x,y) => y[0] - x[0]);
+  const rx = [], seen = new Set(), per = {};
+  for (const [s, v] of scored) {
+    const key = v.c.replace(/\s|\(.*?\)|_/g, "").slice(0, 10);
+    if (seen.has(key) || (per[v.s] || 0) >= 2) continue;
+    seen.add(key); per[v.s] = (per[v.s] || 0) + 1; rx.push(v.n);
+    if (rx.length >= 5) break;
+  }
+  const d = new Date(), p = n => String(n).padStart(2,"0");
+  return {
+    id:`BRG-${String(d.getFullYear()).slice(2)}${p(d.getMonth()+1)}${p(d.getDate())}-${String(Math.floor(Math.random()*900)+100)}`,
+    date:`${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())}`,
+    a:JSON.parse(JSON.stringify(a)), lv, st, why, rx, rxWhy:Object.fromEntries(rx.map(n => [n, rxWhy[n]])),
+    cases:CASES.filter(c => c.f === a.src).slice(0,4).map(c => CASES.indexOf(c))
+  };
+}
+
+/* ========== 차트 ========== */
+let current = store.get("barogo.current", null);
+function renderChart(){
+  const root = $("#chart-root");
+  if (!current) { root.innerHTML = `<div class="card empty"><p>아직 발급된 진료 차트가 없습니다.</p><p style="margin-top:12px"><a class="btn" href="#checkup">문진 시작하기</a></p></div>`; return; }
+  const c = current, a = c.a;
+  const lvText = {crit:"빠른 현장 진단이 필요합니다. 처분 기한이나 민원 확대 전에 원인부터 확정하세요.", warn:"방치하면 민원이나 처분으로 이어질 수 있습니다. 원인 진단을 권합니다.", ok:"급하지 않지만 미리 측정 기준을 만들어 두면 이후 대응이 쉬워집니다."}[c.lv];
+  const stLab = {core:"우선 진행", next:"다음 단계", opt:"필요 시"};
+  const subs = a.smell.map(s => { const m = SMELL[s]; return `<div><b>${m.g}</b><p class="chem">${m.chem}</p><p>${m.why}</p><p style="margin-top:6px"><b style="display:inline;color:var(--ink);font-weight:600">일반적인 대응</b> ${m.fix}</p></div>`; }).join("");
+  const cases = c.cases.length
+    ? `<ul class="cases">${c.cases.map(i => { const k = CASES[i]; return `<li><span class="y">${k.y}</span><span>${esc(k.t)} <small>${esc(k.o)}</small></span></li>`; }).join("")}</ul><p class="note" style="margin-top:8px">출처: <a href="http://www.ts-ei.com/consulting" target="_blank" rel="noopener">태성환경연구소 홈페이지 엔지니어링 실적</a></p>`
+    : `<p class="note">이 분야의 실적은 <a href="http://www.ts-ei.com/consulting" target="_blank" rel="noopener">홈페이지 엔지니어링 실적</a>에서 확인할 수 있습니다. 아래 처방 영상에 관련 사례가 포함되어 있습니다.</p>`;
+  const resNote = a.who === "res" ? `<p class="note" style="margin-top:10px">주민이신 경우 악취 민원은 관할 시·군·구청 환경 부서에 신고할 수 있습니다. 냄새가 난 시각, 장소, 냄새의 느낌을 기록해 두면 배출원 추적에 도움이 됩니다.</p>` : "";
+  root.innerHTML = `
+  <div class="actions noprint" style="justify-content:space-between;margin-bottom:12px">
+    <a class="btn sm ghost" href="#checkup">문진 다시 하기</a>
+    <div class="actions"><button class="btn sm ghost" type="button" id="copy">차트 내용 복사</button><button class="btn sm ghost" type="button" id="print">인쇄·PDF 저장</button></div>
+  </div>
+  <article class="card chart">
+    <div class="chart-head">
+      <div><p class="eyebrow">악취종합병원 예비 진단</p><h1>악취 진료 차트</h1></div>
+      <div class="meta"><span class="mono" style="color:var(--ink);font-size:15px">${c.id}</span><br>발급일 ${c.date}</div>
+    </div>
+    <div class="chart-body">
+      <div class="block"><h3>문진 내용</h3><div class="sym">
+        <span><b>입장</b>${optLabel("who",a.who)}</span><span><b>발생원</b>${optLabel("src",a.src)}</span>
+        <span><b>냄새</b>${a.smell.map(s => optLabel("smell",s)).join(", ")}</span><span><b>패턴</b>${optLabel("pat",a.pat)}</span><span><b>상황</b>${optLabel("sit",a.sit)}</span></div></div>
+      <div class="block"><h3>긴급도</h3><div class="triage ${c.lv}"><b>${LV[c.lv]}</b><p>${lvText}</p></div>${resNote}</div>
+      <div class="block"><h3>추정 원인 물질 (후보)</h3><div class="sub">${subs}</div></div>
+      <div class="block"><h3>권장 진료 경로</h3><div class="steps">${PATH.map(p => `<div class="${c.st[p.k]}"><span class="lab">${stLab[c.st[p.k]]}</span><b>${p.name}</b><p>${c.why[p.k] || p.desc}</p></div>`).join("")}</div></div>
+      <div class="block noprint" data-ai ${sampler ? "" : "hidden"}><h3>AI 소견</h3>
+        <p class="note">차트 내용을 AI가 쉬운 말로 풀어 설명하고, 상담 전에 준비하면 좋은 자료를 알려 드립니다.</p>
+        <p style="margin-top:10px"><button class="btn sm" type="button" id="ai-note-btn">AI 설명 듣기</button></p>
+        <div class="ainote" id="ai-note" aria-live="polite"></div>
+      </div>
+      <div class="block"><h3>처방 영상 ${c.rx.length}편</h3><div class="rx-list">${c.rx.map(n => vcard(VIDEOS[n], c.rxWhy && c.rxWhy[n])).join("")}</div></div>
+      <div class="block"><h3>비슷한 분야의 실적</h3>${cases}</div>
+      <div class="block noprint"><h3>상담 접수</h3>
+        <form class="intake" id="intake"><label>회사·기관명<input id="in-org" type="text" autocomplete="organization" placeholder="예: OO산업"></label><label>연락처 (전화 또는 이메일)<input id="in-contact" type="text" autocomplete="off" placeholder="예: 052-000-0000"></label><button class="btn" type="submit">이 차트로 상담 접수</button></form>
+        <div id="intake-msg"></div>
+        <div class="callbar"><span>바로 통화를 원하시면</span>${PHONE_TAG}<span class="note">실제 운영 시 고객센터 번호로 연결됩니다</span></div>
+      </div>
+    </div>
+    <p class="disclaimer">이 차트는 문진 답변만으로 만든 참고용 예비 진단입니다. 실제 원인 물질과 대책은 현장 시료 채취와 분석을 거쳐 확정됩니다.</p>
+  </article>`;
+  $("#print").onclick = () => { try { window.print(); } catch(e){} };
+  $("#ai-note-btn").onclick = async () => {
+    if (!sampler) return;
+    const btn = $("#ai-note-btn"), out = $("#ai-note"); btn.disabled = true; out.textContent = "작성 중입니다…";
+    const prompt = `당신은 태성환경연구소 악취종합병원의 접수 상담 AI입니다. 아래 예비 진단 차트를 고객에게 설명하세요.
+규칙: 한국어 존댓말, 마크다운 없이 일반 문장. 4~6문장. 비용·기간·법적 판단은 말하지 않습니다. 확정 진단이 아니라 참고용임을 한 번 언급합니다. 마지막에 "상담 전 준비하면 좋은 자료"를 2~3가지 줄바꿈으로 제시합니다.
+[차트]
+입장: ${optLabel("who",a.who)} / 발생원: ${optLabel("src",a.src)} / 냄새: ${a.smell.map(x => optLabel("smell",x)).join(", ")} / 패턴: ${optLabel("pat",a.pat)} / 상황: ${optLabel("sit",a.sit)}
+긴급도: ${LV[c.lv]}
+추정 원인 후보: ${a.smell.map(x => SMELL[x].g + " (" + SMELL[x].chem + ") - " + SMELL[x].why + " 일반적 대응: " + SMELL[x].fix).join(" / ")}
+권장 경로: ${PATH.filter(p => c.st[p.k] !== "opt").map(p => p.name + "(" + (c.why[p.k] || p.desc) + ")").join(" → ")}`;
+    try {
+      const r = await sampler(prompt, {cache:false, onText: ({text}) => { out.textContent = text; }});
+      out.textContent = r.text;
+    } catch (e) {
+      out.textContent = e && e.text ? e.text : "지금은 AI 설명을 불러올 수 없습니다. 잠시 후 다시 시도하거나 전화로 문의해 주세요.";
+      if (e && e.code === "not_granted") { sampler = null; setMode(); }
+    }
+    btn.disabled = false; btn.textContent = "다시 설명 듣기";
+  };
+  $("#copy").onclick = async () => {
+    const txt = [`[악취 진료 차트 ${c.id}] ${c.date}`, `발생원: ${optLabel("src",a.src)} / 냄새: ${a.smell.map(s => optLabel("smell",s)).join(", ")}`, `패턴: ${optLabel("pat",a.pat)} / 상황: ${optLabel("sit",a.sit)}`, `긴급도: ${LV[c.lv]}`,
+      `추정 원인: ${a.smell.map(s => SMELL[s].g + "(" + SMELL[s].chem + ")").join("; ")}`, `권장 경로: ${PATH.filter(p => c.st[p.k] !== "opt").map(p => p.name).join(" → ")}`,
+      `처방 영상: ${c.rx.map(n => VIDEOS[n].c).join(" / ")}`, `※ 참고용 예비 진단`].join("\n");
+    try { await navigator.clipboard.writeText(txt); $("#copy").textContent = "복사했습니다"; } catch(e){ $("#copy").textContent = "복사할 수 없는 환경입니다"; }
+  };
+  $("#intake").addEventListener("submit", e => {
+    e.preventDefault();
+    const org = $("#in-org").value.trim(), contact = $("#in-contact").value.trim();
+    if (!org || !contact) { $("#intake-msg").innerHTML = `<p class="toast" style="background:var(--warn-soft);color:var(--warn)">회사·기관명과 연락처를 모두 입력해 주세요.</p>`; return; }
+    const list = loadCases();
+    if (!list.some(x => x.id === c.id)) { list.unshift({id:c.id, date:c.date, org, contact, src:a.src, lv:c.lv, stage:0, chart:c}); store.set("barogo.cases", list.filter(x => !x.demo)); userCases = list.filter(x => !x.demo); }
+    $("#intake-msg").innerHTML = `<p class="toast">접수되었습니다. 접수번호 ${c.id}. <a href="#staff">직원 접수 현황에서 확인</a> (프로토타입이라 이 브라우저에만 저장됩니다)</p>`;
+  });
+}
+
+/* ========== 영상 라이브러리 ========== */
+const vf = {q:"", stage:"all", field:"all", sort:"new", shown:20};
+function chipRow(el, items, cur, key){
+  el.innerHTML = items.map(([k,name,n]) => `<button type="button" data-k="${k}" aria-pressed="${k===cur}">${name}<span class="n">${n}</span></button>`).join("");
+  el.onclick = e => { const b = e.target.closest("[data-k]"); if (!b) return; vf[key] = b.dataset.k; vf.shown = 20; renderVideos(); };
+}
+function renderVideos(){
+  chipRow($("#stage-chips"), [["all","전체 단계",VIDEOS.length], ...Object.entries(STAGE).map(([k,s]) => [k, s.name, VIDEOS.filter(v => v.s === k).length])], vf.stage, "stage");
+  chipRow($("#field-chips"), [["all","전체 분야",VIDEOS.length], ...Object.entries(FIELD).map(([k,n]) => [k, n, VIDEOS.filter(v => v.f.includes(k)).length])], vf.field, "field");
+  const terms = vf.q.toLowerCase().split(/\s+/).filter(Boolean);
+  let list = VIDEOS.filter(v => (vf.stage === "all" || v.s === vf.stage) && (vf.field === "all" || v.f.includes(vf.field)) &&
+    terms.every(t => (v.t + " " + STAGE[v.s].name + " " + v.f.map(f => FIELD[f]).join(" ")).toLowerCase().includes(t)));
+  list = vf.sort === "views" ? list.slice().sort((a,b) => b.v - a.v) : list;
+  $("#vresult").textContent = `${list.length}편`;
+  $("#vlist").innerHTML = list.length ? list.slice(0, vf.shown).map(vcard).join("") : `<div class="card empty" style="grid-column:1/-1">조건에 맞는 영상이 없습니다. 검색어를 줄이거나 필터를 전체로 바꿔 보세요.</div>`;
+  $("#more").style.display = list.length > vf.shown ? "" : "none";
+}
+$("#q").addEventListener("input", e => { vf.q = e.target.value; vf.shown = 20; renderVideos(); });
+$("#sort").addEventListener("change", e => { vf.sort = e.target.value; renderVideos(); });
+$("#more").onclick = () => { vf.shown += 20; renderVideos(); };
+
+/* ========== 직원 접수 현황 ========== */
+const DEMO = [
+  {id:"BRG-261110-412", date:"2026.11.10", org:"A 양돈농가 (예시)", src:"farm", lv:"crit", stage:1, demo:true},
+  {id:"BRG-261109-287", date:"2026.11.09", org:"B 하수처리장 (예시)", src:"sewage", lv:"warn", stage:3, demo:true},
+  {id:"BRG-261106-733", date:"2026.11.06", org:"C 화학 공장 (예시)", src:"plant", lv:"warn", stage:2, demo:true},
+  {id:"BRG-261103-158", date:"2026.11.03", org:"D 구청 환경과 (예시)", src:"life", lv:"ok", stage:5, demo:true},
+  {id:"BRG-261028-904", date:"2026.10.28", org:"E 자원화시설 (예시)", src:"waste", lv:"crit", stage:4, demo:true}
+];
+let userCases = store.get("barogo.cases", []);
+let demoStage = store.get("barogo.demoStage", {});
+function loadCases(){ return [...userCases, ...DEMO.map(d => ({...d, stage: demoStage[d.id] ?? d.stage}))]; }
+let lvFilter = "all";
+function renderStaff(){
+  const all = loadCases();
+  const k = (n, label) => `<div class="card"><b>${n}</b><span>${label}</span></div>`;
+  $("#kpis").innerHTML = k(all.length, "전체 접수") + k(all.filter(c => c.lv === "crit").length, "긴급") + k(all.filter(c => c.stage < 5).length, "진행 중") + k(all.filter(c => !c.demo).length, "내가 접수한 차트");
+  const max = Math.max(1, ...FLOW.map((_, i) => all.filter(c => c.stage === i).length));
+  $("#pipe").innerHTML = FLOW.map((f, i) => { const n = all.filter(c => c.stage === i).length; return `<div><i style="--w:${n/max*100}%"></i><b>${n}</b>${f}</div>`; }).join("");
+  $("#lv-chips").innerHTML = [["all","전체"],["crit","긴급"],["warn","주의"],["ok","관심"]].map(([key,n]) => `<button type="button" data-lv="${key}" aria-pressed="${key===lvFilter}">${n}</button>`).join("");
+  const list = all.filter(c => lvFilter === "all" || c.lv === lvFilter);
+  $("#sresult").textContent = `${list.length}건`;
+  $("#stable").innerHTML = `<thead><tr><th>접수번호</th><th>접수일</th><th>고객</th><th>발생원</th><th>긴급도</th><th>진행 단계</th></tr></thead><tbody>` +
+    (list.map(c => `<tr><td>${c.chart ? `<button class="lnk" type="button" data-open="${c.id}">${c.id}</button>` : `<span class="mono" style="font-size:13px">${c.id}</span>`}</td><td class="mono" style="font-size:13px">${c.date}</td>
+      <td>${esc(c.org)}${c.contact ? `<br><span class="note">${esc(c.contact)}</span>` : ""}</td><td>${optLabel("src", c.src)}</td><td><span class="pill ${c.lv}">${LV[c.lv]}</span></td>
+      <td><select data-case="${c.id}" aria-label="${c.id} 진행 단계">${FLOW.map((f,i) => `<option value="${i}"${i===c.stage?" selected":""}>${f}</option>`).join("")}</select></td></tr>`).join("") || `<tr><td colspan="6" class="empty">해당하는 접수 건이 없습니다.</td></tr>`) + `</tbody>`;
+}
+$("#lv-chips").addEventListener("click", e => { const b = e.target.closest("[data-lv]"); if (b) { lvFilter = b.dataset.lv; renderStaff(); } });
+$("#stable").addEventListener("change", e => {
+  const id = e.target.dataset.case; if (!id) return; const val = +e.target.value;
+  const u = userCases.find(c => c.id === id);
+  if (u) { u.stage = val; store.set("barogo.cases", userCases); } else { demoStage[id] = val; store.set("barogo.demoStage", demoStage); }
+  renderStaff();
+});
+$("#stable").addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (!b) return; const u = userCases.find(c => c.id === b.dataset.open); if (u && u.chart) { current = u.chart; location.hash = "chart"; } });
+
+/* ========== 안내 도우미 ========== */
+const KB = [
+  {k:["절차","과정","순서","어떻게 진행","단계"], a:"악취종합병원은 진단 → 설계 → 시공 → 모니터링 → 관제 순서로 진행됩니다. 먼저 시료를 채취·분석해 원인 물질을 확정하고, 그에 맞는 방지시설을 설계·시공한 뒤 센서와 관제로 효과를 계속 확인합니다."},
+  {k:["비용","견적","가격","얼마"], a:"비용은 시설 규모와 원인 물질에 따라 크게 달라 이 화면에서 안내하기 어렵습니다. 문진으로 진료 차트를 만든 뒤 상담 접수를 하시면 담당자가 내용을 보고 연락드리는 흐름입니다.", go:["checkup","문진 시작하기"]},
+  {k:["암모니아","지린내"], a:"암모니아는 분뇨, 퇴비화, 폐수의 질소 성분에서 주로 나옵니다. 일반적으로 산 세정이나 바이오필터가 검토됩니다.", q:"암모니아"},
+  {k:["황화수소","달걀","계란"], a:"썩은 달걀 냄새는 황화수소일 가능성이 높습니다. 유기물이 산소 없이 부패할 때 생기며 하수·슬러지 시설에서 흔합니다. 알칼리 약액 세정과 바이오필터가 일반적입니다.", q:"세정탑"},
+  {k:["민원","신고","주민"], a:"민원이 반복되면 발생 시각과 풍향을 함께 기록하는 것이 중요합니다. 태성환경연구소는 민원 정보와 감시차량·센서 데이터를 결합해 배출원을 추적하는 관제 시스템을 운영합니다.", q:"민원"},
+  {k:["모니터링","센서","측정"], a:"고정형 센서, 배출구 모니터링 장비, 이동식 감시차량, 휴대용 장비까지 상황에 맞게 구성합니다. 사업장마다 원인 물질이 달라 센서도 물질에 맞춰 선택합니다.", q:"모니터링"},
+  {k:["드론"], a:"사람이 접근하기 어려운 굴뚝이나 넓은 부지는 드론으로 악취 시료를 포집하고 배출원을 추적합니다.", q:"드론"},
+  {k:["관제","예측","예보"], a:"통합관제는 여러 측정 지점의 데이터를 한 화면에 모아 악취 확산을 추적·예측합니다. 울산시 악취예보 모니터링 시스템 영상이 좋은 예입니다.", q:"관제"},
+  {k:["축사","축산","농장","돼지","양돈"], a:"축산 악취는 암모니아, 황화합물, 지방산이 섞인 복합악취입니다. 축사 구조와 분뇨 처리 방식에 맞춘 저감 기술과 통합관리 프로그램 영상이 준비되어 있습니다.", q:"축사"},
+  {k:["하수","슬러지","폐수"], a:"하수·슬러지 시설은 황화수소와 암모니아가 주된 원인입니다. 세정탑·바이오필터 개조 사례 영상을 참고해 보세요.", q:"슬러지"},
+  {k:["자동차","에어컨","시트","내장재"], a:"자동차 실내 냄새는 내장 부품의 VOC와 에어컨 증발기에서 주로 나옵니다. 부품별 분석과 냄새 평가 방법 영상이 있습니다.", q:"자동차"},
+  {k:["건축자재","새집","벽지","페인트"], a:"건축자재는 소형 챔버 시험으로 유해물질 방출량을 측정합니다. 자재 종류별 분석법 교육 영상이 있습니다.", q:"건축자재"},
+  {k:["탄소","열분해"], a:"악취 저감 외에 열분해, 광물화 등 탄소중립 설비도 다루고 있습니다.", q:"탄소"},
+  {k:["연락","문의","전화","위치","주소"], a:"고객센터 전화는 052-0000-0000입니다(과제용 예시 번호). 실제 연락처는 회사 홈페이지에서 확인해 주세요. 문진 후 상담 접수를 하면 차트 내용이 담당 직원 화면으로 전달됩니다.", link:["http://www.ts-ei.com/","홈페이지 열기"]},
+  {k:["바로고","이 사이트","뭐하는"], a:"바로고시스템은 고객이 3분 문진으로 진료 차트를 받고, 그 차트가 직원 접수 현황으로 이어지는 악취종합병원 통합 창구입니다."}
+];
+function reply(text){
+  const t = text.toLowerCase();
+  const hit = KB.find(e => e.k.some(k => t.includes(k)));
+  const terms = (hit && hit.q ? [hit.q] : t.split(/\s+/)).map(s => s.replace(/[?.,!은는이가을를에의도]+$/,"")).filter(s => s.length >= 2);
+  const vids = VIDEOS.filter(v => !["intro"].includes(v.s) && terms.some(k => v.t.toLowerCase().includes(k.toLowerCase()))).sort((a,b) => b.v - a.v).slice(0,3);
+  let html = hit ? esc(hit.a) : vids.length ? "관련 영상을 찾았습니다." : "아직 준비되지 않은 질문입니다. 냄새 종류나 시설 이름(예: 축사, 슬러지, 드론)으로 물어보시거나, 문진을 하면 상황에 맞는 안내를 받을 수 있습니다.";
+  if (vids.length) html += "\n\n추천 영상" + vids.map(v => `<a href="${vurl(v)}" target="_blank" rel="noopener">▸ ${esc(v.c)} (${v.d})</a>`).join("");
+  if (hit && hit.go) html += `<a href="#${hit.go[0]}">${hit.go[1]}</a>`;
+  if (hit && hit.link) html += `<a href="${hit.link[0]}" target="_blank" rel="noopener">${hit.link[1]}</a>`;
+  if (!hit && !vids.length) html += `<a href="#checkup">문진 시작하기</a><span style="display:block;margin-top:6px">전화 상담: ${PHONE_TAG}</span>`;
+  return html;
+}
+function say(html, who){ const d = document.createElement("div"); d.className = "msg " + who; d.innerHTML = html; $("#log").appendChild(d); $("#log").scrollTop = $("#log").scrollHeight; return d; }
+// 실제 AI(Claude) 연결. 연결할 수 없는 환경에서는 위의 기본 안내(reply)로 답합니다.
+let sampler = null, aiBusy = false; const chatHistory = [];
+function setMode(){
+  $("#chat-mode").textContent = sampler ? "Claude AI가 답합니다 · 답변은 참고용" : "기본 안내 모드 · 미리 준비한 답변과 영상 검색";
+  document.querySelectorAll("[data-ai]").forEach(el => { el.hidden = !sampler; });
+}
+(async () => { try { if (window.claude && typeof window.claude.use === "function") sampler = await window.claude.use("sample"); } catch (e) { sampler = null; } setMode(); })();
+const AI_CONTEXT = () => `당신은 태성환경연구소 "악취종합병원"의 웹 창구 "바로고시스템"에 있는 AI 상담 도우미입니다. 고객이 전화하기 전에 궁금한 점을 스스로 해결하도록 돕습니다.
+
+[답변 규칙]
+- 한국어 존댓말, 마크다운 기호 없이 일반 문장으로 2~5문장.
+- 아래 [사이트 정보]와 널리 알려진 악취 관련 일반 지식만 사용합니다. 모르는 것은 모른다고 하고 지어내지 않습니다.
+- 비용, 견적, 공사 기간, 법적 판단, 회사 내부 사정은 답하지 않고 전화 상담을 권합니다.
+- 원인 추정은 항상 "가능성"으로 말하고, 확정에는 현장 측정이 필요하다고 알립니다.
+- 상황에 맞으면 사이트의 문진(3분, 진료 차트 발급)을 권합니다.
+- 답변 뒤에 반드시 아래 두 줄을 정확한 형식으로 붙입니다.
+영상: 관련 영상 번호를 쉼표로 최대 3개 (없으면 없음)
+전화: 사람 상담이 필요하면 예, 아니면 아니오
+
+[사이트 정보]
+회사: (주)태성환경연구소, 울산 울주군 온산읍. 고객센터 ${PHONE} (과제용 예시 번호이며 실제 번호가 아님을 안내할 것). 홈페이지 www.ts-ei.com
+악취종합병원 5단계: ${PATH.map(p => p.name + " - " + p.desc).join(" / ")}
+사이트 메뉴: 홈, 문진·진료 차트(질문 5개 → 긴급도·추정 원인·권장 경로·처방 영상·유사 실적), 영상 처방실(영상 ${VIDEOS.length}편 검색·필터), 직원 접수 현황(내부용)
+냄새 인상별 원인 후보: ${Object.entries(SMELL).map(([k, m]) => optLabel("smell", k) + " → " + m.g + "(" + m.chem + "), 일반적 대응: " + m.fix).join(" / ")}
+홈페이지 게시 실적 일부: ${CASES.map(c => c.y + " " + c.t + "(" + c.o + ")").join(" / ")}
+
+[영상 목록: 번호|단계|제목]
+${VIDEOS.map(v => v.n + "|" + STAGE[v.s].name + "|" + v.c).join("\n")}`;
+function renderAnswer(el, raw, done){
+  const vm = raw.match(/영상\s*[:：]\s*([^\n]*)/), cm = raw.match(/전화\s*[:：]\s*([^\n]*)/);
+  const body = raw.replace(/\n?\s*영상\s*[:：][^\n]*/, "").replace(/\n?\s*전화\s*[:：][^\n]*/, "").trim();
+  let html = esc(body || "답변을 준비하고 있습니다…");
+  if (done) {
+    const ids = vm ? (vm[1].match(/\d+/g) || []).map(Number).filter(n => VIDEOS[n]).slice(0, 3) : [];
+    html += ids.map(n => `<button type="button" class="vbtn" data-v="${n}">▸ ${esc(VIDEOS[n].c)} (${VIDEOS[n].d})</button>`).join("");
+    if (cm && /예/.test(cm[1])) html += `<span style="display:block;margin-top:6px">전화 상담 연결: ${PHONE_TAG}</span>`;
+  }
+  el.innerHTML = html; $("#log").scrollTop = $("#log").scrollHeight;
+}
+async function ask(text){
+  say(esc(text), "me");
+  if (!sampler || aiBusy) { say(reply(text), "bot"); return; }
+  aiBusy = true; const el = say("답변을 준비하고 있습니다…", "bot");
+  chatHistory.push({role:"user", content:text});
+  let msgs = chatHistory.slice(-7); if (msgs[0].role !== "user") msgs = msgs.slice(1);
+  msgs = msgs.map((m, i) => i === 0 ? {role:"user", content: AI_CONTEXT() + "\n\n[고객 질문]\n" + m.content} : m);
+  try {
+    const r = await sampler(msgs, {cache:false, modelTier:"default", onText: ({text}) => renderAnswer(el, text, false)});
+    renderAnswer(el, r.text, true); chatHistory.push({role:"assistant", content:r.text});
+  } catch (e) {
+    chatHistory.pop();
+    if (e && e.code === "not_granted") { sampler = null; setMode(); }
+    el.innerHTML = reply(text) + `<span class="note" style="display:block;margin-top:6px">AI 연결이 원활하지 않아 기본 안내로 답했습니다.</span>`;
+  }
+  aiBusy = false;
+}
+function toggleChat(on){ const c = $("#chat"); const open = on ?? !c.classList.contains("on"); c.classList.toggle("on", open); $("#fab").style.display = open ? "none" : ""; $("#fab").setAttribute("aria-expanded", open); if (open) $("#chat-in").focus(); }
+$("#fab").onclick = () => toggleChat(true); $("#chat-x").onclick = () => toggleChat(false);
+$("#chat-form").addEventListener("submit", e => { e.preventDefault(); const v = $("#chat-in").value.trim(); if (!v) return; $("#chat-in").value = ""; ask(v); });
+$("#quick").innerHTML = ["진행 절차가 궁금해요","축사 냄새 줄이는 방법","민원이 계속 들어와요","상담 전에 뭘 준비하나요"].map(s => `<button type="button">${s}</button>`).join("");
+$("#quick").addEventListener("click", e => { if (e.target.tagName === "BUTTON") ask(e.target.textContent); });
+$("#log").addEventListener("click", e => { if (e.target.matches('a[href^="#"]')) toggleChat(false); });
+say("안녕하세요. 악취 종류, 시설, 진행 절차 등 궁금한 점을 물어보세요. 설명과 함께 관련 영상을 찾아 드리고, 필요하면 전화 상담으로 연결해 드립니다.", "bot");
+
+/* ========== 글자 크기 ========== */
+$("#fs").onclick = () => { const on = !document.body.classList.contains("big"); document.body.classList.toggle("big", on); $("#fs").setAttribute("aria-pressed", on); $("#fs").textContent = on ? "글자 보통" : "글자 크게"; store.set("barogo.big", on); };
+if (store.get("barogo.big", false)) $("#fs").click();
+
+/* ========== 화면 전환 ========== */
+const VIEWS = ["home","checkup","chart","videos","staff"];
+function route(){
+  const h = location.hash.replace("#","");
+  const v = VIEWS.includes(h) ? h : "home";
+  VIEWS.forEach(x => $("#v-" + x).classList.toggle("on", x === v));
+  document.querySelectorAll("[data-nav]").forEach(a => { const on = a.dataset.nav === v || (v === "chart" && a.dataset.nav === "checkup"); if (on) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  if (v === "chart") renderChart();
+  if (v === "videos") renderVideos();
+  if (v === "staff") renderStaff();
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+syncForm(); renderVideos(); route();
+</script>
+</body>
+</html>
