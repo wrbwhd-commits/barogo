@@ -534,7 +534,7 @@ const store = {
 const optLabel = (qk, v) => { const q = Q.find(q => q.k === qk); const o = q.opts.find(o => o[0] === v); return o ? o[1] : v; };
 
 /* ========== 영상 카드 ========== */
-function vcard(v, why){
+function vcard(v, why){ if (typeof why !== "string") why = "";
   const st = STAGE[v.s];
   const thumb = ` style="--c:${st.c}"`;
   const img = v.id ? `<img loading="lazy" alt="" src="https://i.ytimg.com/vi/${v.id}/mqdefault.jpg" onerror="this.remove()">` : "";
