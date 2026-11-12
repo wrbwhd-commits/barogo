@@ -230,6 +230,8 @@ td .lnk{background:none;border:0;padding:0;color:var(--accent-ink);text-decorati
 /* 상담 도우미 */
 .fab{position:fixed;right:16px;bottom:80px;z-index:30;display:flex;align-items:center;gap:8px;height:48px;padding:0 16px;border-radius:99px;border:0;background:var(--ink);color:#fff;font-weight:600;cursor:pointer;box-shadow:0 6px 20px rgba(17,38,31,.3)}
 @media (min-width:721px){.fab{bottom:20px}}
+body:has(#v-checkup.on) .fab{bottom:156px}
+@media (min-width:721px){body:has(#v-checkup.on) .fab{bottom:100px}}
 .chat{position:fixed;right:16px;bottom:80px;z-index:40;width:min(380px,calc(100vw - 32px));height:min(560px,calc(100% - 110px));display:none;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 48px rgba(17,38,31,.28);overflow:hidden}
 @media (min-width:721px){.chat{bottom:20px}}
 .chat.on{display:flex}
